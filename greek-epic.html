@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Ancient Greek Epic — VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info { position: fixed; bottom: 14px; left: 14px; color: rgba(255,255,255,0.45); font-family: monospace; font-size: 11px; z-index: 10; pointer-events: none; }
+    #controls { position: fixed; top: 14px; right: 14px; color: rgba(255,255,255,0.85); font-family: monospace; font-size: 11px; z-index: 10; background: rgba(0,0,0,0.55); padding: 12px; border-radius: 4px; line-height: 2; }
+    #controls label { display: block; }
+    #controls input[type="range"] { width: 110px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="info">Ancient Greek Epic — VP Lab v1.0</div>
+  <div id="controls">
+    <label>Time of Day <input type="range" id="tod" min="0" max="100" value="60"></label>
+    <label>Waves <input type="range" id="waves" min="0" max="100" value="35"></label>
+    <label>Speed <input type="range" id="spd" min="0" max="100" value="20"></label>
+    <label><input type="checkbox" id="fly" checked> Flythrough</label>
+  </div>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { Water } from 'three/addons/objects/Water.js';
+
+    // ─── SETUP ────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.75;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x7BA4C7);
+    scene.fog = new THREE.Fog(0x7BA4C7, 400, 1200);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 3000);
+    camera.position.set(-150, 70, 250);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true; orbit.target.set(0, 10, 0);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
+    sun.position.set(200, 300, 150); sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = -350; sun.shadow.camera.right = 350;
+    sun.shadow.camera.top = 350; sun.shadow.camera.bottom = -350;
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0x99aabb, 0.45));
+    scene.add(new THREE.HemisphereLight(0x88bbdd, 0x886633, 0.35));
+
+    // ─── MATERIALS ────────────────────────────────────
+    const M = {
+      marble: new THREE.MeshLambertMaterial({ color: 0xeee8d5 }),
+      aged: new THREE.MeshLambertMaterial({ color: 0xd8cfb0 }),
+      stone: new THREE.MeshLambertMaterial({ color: 0xb8a88a }),
+      stoneD: new THREE.MeshLambertMaterial({ color: 0x998870 }),
+      terra: new THREE.MeshLambertMaterial({ color: 0xc45a3c }),
+      wood: new THREE.MeshLambertMaterial({ color: 0x5c3a1e }),
+      sand: new THREE.MeshLambertMaterial({ color: 0xd4c5a0 }),
+      grass: new THREE.MeshLambertMaterial({ color: 0x7a9050 }),
+      olive: new THREE.MeshLambertMaterial({ color: 0x556B2F }),
+      dark: new THREE.MeshLambertMaterial({ color: 0x221100 }),
+      awning: new THREE.MeshLambertMaterial({ color: 0xc9a86c }),
+      path: new THREE.MeshLambertMaterial({ color: 0xcabb95 }),
+      wf: new THREE.MeshLambertMaterial({ color: 0x3388aa, transparent: true, opacity: 0.7 }),
+      cypress: new THREE.MeshLambertMaterial({ color: 0x1a3a1a }),
+      trunk: new THREE.MeshLambertMaterial({ color: 0x553311 }),
+      bronze: new THREE.MeshLambertMaterial({ color: 0x8B7355 }),
+      cliff: new THREE.MeshLambertMaterial({ color: 0x9a8a6a }),
+      sail: new THREE.MeshLambertMaterial({ color: 0xeeddcc }),
+      red: new THREE.MeshLambertMaterial({ color: 0x993322 }),
+      blue: new THREE.MeshLambertMaterial({ color: 0x334488 }),
+    };
+
+    // ─── GROUND ───────────────────────────────────────
+    // Upper city platform
+    const upperPlat = new THREE.Mesh(new THREE.BoxGeometry(450, 4, 400), M.sand);
+    upperPlat.position.set(0, -2, 50); upperPlat.receiveShadow = true;
+    scene.add(upperPlat);
+    // Lower city platform (harbor district)
+    const lowerPlat = new THREE.Mesh(new THREE.BoxGeometry(450, 4, 120), M.sand);
+    lowerPlat.position.set(0, -6, -100); lowerPlat.receiveShadow = true;
+    scene.add(lowerPlat);
+    // Slope between upper and lower
+    const slopeGeo = new THREE.PlaneGeometry(450, 40, 1, 1);
+    slopeGeo.rotateX(-Math.PI / 2.5);
+    const slope = new THREE.Mesh(slopeGeo, M.sand);
+    slope.position.set(0, -2, -35); slope.receiveShadow = true;
+    scene.add(slope);
+    // Grass surround
+    const grassBase = new THREE.Mesh(new THREE.BoxGeometry(700, 2, 700), M.grass);
+    grassBase.position.set(0, -9, 50); grassBase.receiveShadow = true;
+    scene.add(grassBase);
+
+    // ─── CLIFFS (coastal) ─────────────────────────────
+    for (let i = 0; i < 6; i++) {
+      const cw = 40 + Math.random() * 60;
+      const ch = 10 + Math.random() * 15;
+      const cliff = new THREE.Mesh(new THREE.BoxGeometry(cw, ch, 30), M.cliff);
+      cliff.position.set(-220 + i * 90 + Math.random() * 20, -ch/2 - 2, -155);
+      cliff.rotation.y = Math.random() * 0.3 - 0.15;
+      scene.add(cliff);
+    }
+
+    // ─── WATER ────────────────────────────────────────
+    const water = new Water(new THREE.PlaneGeometry(5000, 5000), {
+      textureWidth: 256, textureHeight: 256,
+      waterNormals: new THREE.TextureLoader().load(
+        'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/textures/waternormals.jpg',
+        t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
+      ),
+      sunDirection: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
+      sunColor: 0xffffff, waterColor: 0x001e4d, distortionScale: 3, fog: true,
+    });
+    water.rotation.x = -Math.PI / 2; water.position.set(0, -9, -400);
+    scene.add(water);
+
+    // Beach
+    const beachGeo = new THREE.PlaneGeometry(450, 60, 1, 1);
+    beachGeo.rotateX(-Math.PI / 2);
+    const bv = beachGeo.attributes.position;
+    bv.setY(0, -4); bv.setY(1, -4); bv.setY(2, -9); bv.setY(3, -9);
+    beachGeo.computeVertexNormals();
+    const beach = new THREE.Mesh(beachGeo, new THREE.MeshLambertMaterial({ color: 0xd4bf8a }));
+    beach.position.set(0, 0, -170); beach.receiveShadow = true;
+    scene.add(beach);
+
+    // ─── BUILDERS ─────────────────────────────────────
+    function col(h=14, r=1) {
+      const g = new THREE.Group();
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*1.4, r*1.4, 0.8, 6), M.marble), { position: new THREE.Vector3(0,0.4,0), castShadow: true }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*0.8, r, h, 8), M.marble), { position: new THREE.Vector3(0,h/2+0.8,0), castShadow: true }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*1.5, r*0.85, 1.5, 6), M.marble), { position: new THREE.Vector3(0,h+0.8,0), castShadow: true }));
+      return g;
+    }
+
+    function temple(w, d, ch, cr, cs) {
+      const g = new THREE.Group();
+      for (let s=0; s<3; s++) {
+        const st = new THREE.Mesh(new THREE.BoxGeometry(w+6-s*2, 0.7, d+6-s*2), M.aged);
+        st.position.y = s*0.7+0.35; st.castShadow = true; g.add(st);
+      }
+      const b = 2.1;
+      const hw = w/2-1, hd = d/2-1;
+      for (let cx=-hw; cx<=hw+0.1; cx+=cs) {
+        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(cx,b,-hd) }));
+        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(cx,b,hd) }));
+      }
+      for (let cz=-hd+cs; cz<hd; cz+=cs) {
+        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(-hw,b,cz) }));
+        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(hw,b,cz) }));
+      }
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(w+2, 1.2, d+2), M.marble);
+      beam.position.y = b+ch+1.5; beam.castShadow = true; g.add(beam);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w+3, 2.5, d+3), M.terra);
+      roof.position.y = b+ch+3.5; g.add(roof);
+      const ridge = new THREE.Mesh(new THREE.BoxGeometry(3.5, 4.5, d+4), M.terra);
+      ridge.position.y = b+ch+5.5; g.add(ridge);
+      const cella = new THREE.Mesh(new THREE.BoxGeometry(w-7, ch-2, d-7), M.aged);
+      cella.position.y = b+(ch-2)/2+1; g.add(cella);
+      return g;
+    }
+
+    function shop(x, z, r=0) {
+      const g = new THREE.Group();
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 4.5, 7), M.stone), { position: new THREE.Vector3(0,2.25,0), castShadow: true }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(7, 0.25, 8), M.terra), { position: new THREE.Vector3(0,4.6,0) }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(7, 0.12, 2.5), M.awning), { position: new THREE.Vector3(0,3.6,-4.5) }));
+      for (const sx of [-2.5,2.5]) g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,3,4), M.wood), { position: new THREE.Vector3(sx,1.8,-5.5) }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, 1.2), M.wood), { position: new THREE.Vector3(0,1.5,-4.2) }));
+      for (let j=-1.8; j<=1.8; j+=1.2) g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 0.9, 5), M.terra), { position: new THREE.Vector3(j,2.3,-4.2) }));
+      g.add(Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.8), M.dark), { position: new THREE.Vector3(0,1.4,-3.55) }));
+      g.position.set(x, 0, z); g.rotation.y = r;
+      return g;
+    }
+
+    function house(x, z, r=0, w=10, d=12) {
+      const g = new THREE.Group();
+      // Walls
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w, 5, d), M.stone), { position: new THREE.Vector3(0,2.5,0), castShadow: true }));
+      // Roof
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w+1, 0.4, d+1), M.terra), { position: new THREE.Vector3(0,5.2,0) }));
+      // Courtyard wall (open side)
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w*0.6, 3, 0.5), M.stone), { position: new THREE.Vector3(0,1.5,-d/2-2) }));
+      // Door
+      g.add(Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(1.5, 2.5), M.dark), { position: new THREE.Vector3(0,1.25,-d/2-0.01) }));
+      g.position.set(x, 0, z); g.rotation.y = r;
+      return g;
+    }
+
+    function statue(x, z, h=8) {
+      const g = new THREE.Group();
+      // Pedestal
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3), M.marble), { position: new THREE.Vector3(0,2,0), castShadow: true }));
+      // Figure (simple abstract)
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1, h-2, 6), M.bronze), { position: new THREE.Vector3(0,4+(h-2)/2,0), castShadow: true }));
+      // Head
+      g.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.9, 6, 5), M.bronze), { position: new THREE.Vector3(0,4+h-1.5,0) }));
+      g.position.set(x, 0, z);
+      return g;
+    }
+
+    function boat(x, z, r=0) {
+      const g = new THREE.Group();
+      // Hull
+      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(5, 2, 16), M.wood), { position: new THREE.Vector3(0,0,0) }));
+      // Pointed bow
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0, 2.5, 5, 4), M.wood), { position: new THREE.Vector3(0,0.5,-10), rotation: new THREE.Euler(Math.PI/2,Math.PI/4,0) }));
+      // Mast
+      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 14, 5), M.wood), { position: new THREE.Vector3(0,7,0) }));
+      // Sail
+      g.add(Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(8, 10), M.sail), { position: new THREE.Vector3(0,8,0) }));
+      g.position.set(x, -8, z); g.rotation.y = r;
+      return g;
+    }
+
+    // ─── ACROPOLIS ─────────────────────────────────────
+    const mound = new THREE.Mesh(new THREE.CylinderGeometry(55, 70, 16, 8), M.stoneD);
+    mound.position.set(0, 8, 160); scene.add(mound);
+    for (let s=0; s<12; s++) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(14, 1, 2.2), M.aged);
+      st.position.set(0, s*1.2+0.6, 128+s*2); st.castShadow = true; scene.add(st);
+    }
+    const t1 = temple(34, 54, 16, 1.2, 5.5);
+    t1.position.set(0, 16, 160); scene.add(t1);
+
+    // ─── SECONDARY TEMPLES ────────────────────────────
+    const t2 = temple(16, 24, 10, 0.8, 4.5);
+    t2.position.set(-120, 0, 60); scene.add(t2);
+    const t3 = temple(18, 28, 11, 0.9, 5);
+    t3.position.set(110, 0, 40); scene.add(t3);
+    const t4 = temple(14, 20, 9, 0.7, 4);
+    t4.position.set(60, -4, -90); scene.add(t4); // Harbor temple
+
+    // ─── AMPHITHEATRE ─────────────────────────────────
+    const amphi = new THREE.Group();
+    for (let row=0; row<8; row++) {
+      const r = 25 + row * 4;
+      const geo = new THREE.RingGeometry(r, r+3, 24, 1, 0, Math.PI);
+      geo.rotateX(-Math.PI/2);
+      const seat = new THREE.Mesh(geo, M.aged);
+      seat.position.y = row * 1.5;
+      amphi.add(seat);
+    }
+    // Stage floor
+    const stage = new THREE.Mesh(new THREE.CircleGeometry(22, 16), M.path);
+    stage.rotation.x = -Math.PI/2; stage.position.y = 0.1;
+    amphi.add(stage);
+    amphi.position.set(-130, 0, 170);
+    amphi.rotation.y = -0.5;
+    scene.add(amphi);
+
+    // ─── AGORA ────────────────────────────────────────
+    const agora = new THREE.Mesh(new THREE.BoxGeometry(130, 0.25, 90), M.path);
+    agora.position.set(0, 0.12, 20); agora.receiveShadow = true; scene.add(agora);
+
+    // Shops — left
+    for (let i=0; i<6; i++) scene.add(shop(-60, -18+i*15, 0));
+    // Shops — right
+    for (let i=0; i<6; i++) scene.add(shop(55, -18+i*15, Math.PI));
+    // Shops — back
+    for (let i=0; i<4; i++) scene.add(shop(-30+i*20, -28, Math.PI/2));
+
+    // ─── STOA ─────────────────────────────────────────
+    const stoaF = new THREE.Mesh(new THREE.BoxGeometry(7, 0.6, 95), M.aged);
+    stoaF.position.set(-72, 0.3, 20); scene.add(stoaF);
+    for (let cz=-24; cz<=60; cz+=4) {
+      const c = col(8, 0.55); c.position.set(-72, 0.6, cz); scene.add(c);
+    }
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(8, 0.4, 97), M.terra), { position: new THREE.Vector3(-72,9.8,20) }));
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.6, 8.5, 95), M.stone), { position: new THREE.Vector3(-75.5,5,20) }));
+
+    // ─── CITY WALLS ───────────────────────────────────
+    // Front wall (harbor side) with gate
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(140, 10, 3), M.stoneD), { position: new THREE.Vector3(-90,-2,-40), castShadow: true }));
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(140, 10, 3), M.stoneD), { position: new THREE.Vector3(90,-2,-40), castShadow: true }));
+    // Gate opening
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(20, 3, 4), M.stoneD), { position: new THREE.Vector3(0,4.5,-40) })); // lintel
+    // Gate towers
+    for (const sx of [-12, 12]) {
+      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 14, 6), M.stoneD), { position: new THREE.Vector3(sx,3,-40), castShadow: true }));
+      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(7, 1, 7), M.stoneD), { position: new THREE.Vector3(sx,10.5,-40) }));
+    }
+    // Side walls
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 8, 290), M.stoneD), { position: new THREE.Vector3(-165,-1,80), castShadow: true }));
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 8, 290), M.stoneD), { position: new THREE.Vector3(165,-1,80), castShadow: true }));
+    // Wall towers
+    for (let tz=-30; tz<=180; tz+=70) {
+      for (const sx of [-165, 165]) {
+        scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(8, 12, 8), M.stoneD), { position: new THREE.Vector3(sx,2,tz), castShadow: true }));
+      }
+    }
+
+    // ─── AQUEDUCT ─────────────────────────────────────
+    const aqGroup = new THREE.Group();
+    for (let i=0; i<10; i++) {
+      const x = i * 18;
+      // Pillar
+      aqGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 18, 3), M.stone), { position: new THREE.Vector3(x,9,0), castShadow: true }));
+      // Arch (simplified as a box between pillars)
+      if (i < 9) {
+        aqGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(15, 2, 3), M.stone), { position: new THREE.Vector3(x+9,15,0) }));
+      }
+      // Top channel
+      aqGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(18, 1.5, 2.5), M.aged), { position: new THREE.Vector3(x,18.5,0) }));
+    }
+    aqGroup.position.set(-180, -4, 120);
+    aqGroup.rotation.y = 0.3;
+    scene.add(aqGroup);
+
+    // ─── RESIDENTIAL DISTRICT ─────────────────────────
+    const housePositions = [
+      { x: 90, z: 100, r: 0.2 }, { x: 115, z: 120, r: -0.3 }, { x: 130, z: 90, r: 0.5 },
+      { x: 100, z: 140, r: 0.1 }, { x: 135, z: 145, r: -0.2 }, { x: 145, z: 115, r: 0.4 },
+      { x: -95, z: 100, r: -0.2 }, { x: -110, z: 125, r: 0.3 }, { x: -130, z: 95, r: -0.5 },
+      { x: -100, z: 145, r: 0.1 }, { x: -85, z: 130, r: -0.4 },
+      { x: 30, z: 85, r: 0.1 }, { x: 50, z: 95, r: -0.2 }, { x: -40, z: 90, r: 0.3 },
+      { x: -55, z: 100, r: -0.1 }, { x: 70, z: 110, r: 0.2 },
+    ];
+    housePositions.forEach(h => scene.add(house(h.x, h.z, h.r, 8+Math.random()*5, 10+Math.random()*4)));
+
+    // ─── FOUNTAIN ─────────────────────────────────────
+    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5.5, 1.5, 10), M.marble), { position: new THREE.Vector3(0,0.75,20), castShadow: true }));
+    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 0.3, 10), M.wf), { position: new THREE.Vector3(0,1.7,20) }));
+    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 4, 6), M.marble), { position: new THREE.Vector3(0,3.8,20) }));
+
+    // ─── STATUES ──────────────────────────────────────
+    scene.add(statue(-30, 20, 7)); // Agora
+    scene.add(statue(25, 20, 6)); // Agora
+    scene.add(statue(-5, 80, 8)); // Path to temple
+    scene.add(statue(0, -38, 9)); // At the gate
+
+    // ─── DOCK & BOATS ─────────────────────────────────
+    const dock = new THREE.Mesh(new THREE.BoxGeometry(80, 1, 10), M.wood);
+    dock.position.set(-20, -7, -130); dock.castShadow = true; scene.add(dock);
+    const dockArm1 = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 30), M.wood);
+    dockArm1.position.set(-50, -7, -148); scene.add(dockArm1);
+    const dockArm2 = new THREE.Mesh(new THREE.BoxGeometry(8, 1, 25), M.wood);
+    dockArm2.position.set(10, -7, -145); scene.add(dockArm2);
+    // Pilings
+    for (let dx=-55; dx<=25; dx+=12) {
+      scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 7, 5), M.wood), { position: new THREE.Vector3(dx,-8.5,-130) }));
+    }
+
+    // Boats
+    scene.add(boat(-55, -170, 0.3));
+    scene.add(boat(-20, -180, -0.2));
+    scene.add(boat(25, -175, 0.5));
+    scene.add(boat(80, -190, -0.4));
+
+    // ─── OLIVE GROVES ─────────────────────────────────
+    const oliveTopGeo = new THREE.SphereGeometry(4, 5, 4);
+    const oliveTrkGeo = new THREE.CylinderGeometry(0.4, 0.6, 5, 4);
+    const olives = new THREE.InstancedMesh(oliveTopGeo, M.olive, 60);
+    const oliveTrunks = new THREE.InstancedMesh(oliveTrkGeo, M.trunk, 60);
+    const dm = new THREE.Object3D();
+    let oi = 0;
+    // Left grove
+    for (let gx=-190; gx<=-140; gx+=12) {
+      for (let gz=10; gz<=70; gz+=12) {
+        if (oi >= 60) break;
+        const sc = 0.7+Math.random()*0.4;
+        dm.position.set(gx+Math.random()*4, 5*sc, gz+Math.random()*4);
+        dm.scale.set(sc, sc*0.8, sc); dm.updateMatrix();
+        olives.setMatrixAt(oi, dm.matrix);
+        dm.position.y = 2.5*sc; dm.updateMatrix();
+        oliveTrunks.setMatrixAt(oi, dm.matrix);
+        oi++;
+      }
+    }
+    // Right grove
+    for (let gx=150; gx<=190; gx+=12) {
+      for (let gz=30; gz<=90; gz+=12) {
+        if (oi >= 60) break;
+        const sc = 0.7+Math.random()*0.4;
+        dm.position.set(gx+Math.random()*4, 5*sc, gz+Math.random()*4);
+        dm.scale.set(sc, sc*0.8, sc); dm.updateMatrix();
+        olives.setMatrixAt(oi, dm.matrix);
+        dm.position.y = 2.5*sc; dm.updateMatrix();
+        oliveTrunks.setMatrixAt(oi, dm.matrix);
+        oi++;
+      }
+    }
+    olives.count = oi; oliveTrunks.count = oi;
+    olives.castShadow = true;
+    scene.add(olives); scene.add(oliveTrunks);
+
+    // ─── CYPRESS TREES ────────────────────────────────
+    const coneG = new THREE.ConeGeometry(1.8, 13, 5);
+    const trkG = new THREE.CylinderGeometry(0.25, 0.4, 3, 4);
+    const trees = new THREE.InstancedMesh(coneG, M.cypress, 80);
+    const trunks = new THREE.InstancedMesh(trkG, M.trunk, 80);
+    let ti = 0;
+    for (let i=0; i<300 && ti<80; i++) {
+      const x = (Math.random()-0.5)*500;
+      const z = Math.random()*350 - 50;
+      if (Math.abs(x)<75 && Math.abs(z-20)<55) continue;
+      if (Math.sqrt(x*x+(z-160)**2)<65) continue;
+      if (z < -40) continue;
+      if (Math.abs(x) > 160 && z < 100) continue; // outside walls
+      const sc = 0.5+Math.random()*0.5;
+      dm.position.set(x, 6.5*sc, z); dm.scale.set(sc,sc,sc); dm.updateMatrix();
+      trees.setMatrixAt(ti, dm.matrix);
+      dm.position.y = 1.5*sc; dm.updateMatrix();
+      trunks.setMatrixAt(ti, dm.matrix);
+      ti++;
+    }
+    trees.count = ti; trunks.count = ti;
+    trees.castShadow = true; scene.add(trees); scene.add(trunks);
+
+    // ─── MOUNTAINS ────────────────────────────────────
+    for (let i=0; i<10; i++) {
+      const mh = 60+Math.random()*120;
+      const mw = 50+Math.random()*90;
+      const mt = new THREE.Mesh(
+        new THREE.ConeGeometry(mw, mh, 4+Math.floor(Math.random()*3)),
+        new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(0.25, 0.15, 0.3+Math.random()*0.12) })
+      );
+      mt.position.set(-350+i*80+Math.random()*30, mh/2-12, 380+Math.random()*150);
+      mt.rotation.y = Math.random()*3.14; scene.add(mt);
+      if (mh > 110) {
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(mw*0.3, mh*0.18, 4),
+          new THREE.MeshLambertMaterial({ color: 0xeeeef5 }));
+        cap.position.set(mt.position.x, mh*0.68, mt.position.z); scene.add(cap);
+      }
+    }
+
+    // ─── PATHS ────────────────────────────────────────
+    // Gate to agora
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(10, 0.15, 40), M.path), { position: new THREE.Vector3(0,0.08,-18) }));
+    // Agora to temple stairs
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(12, 0.15, 60), M.path), { position: new THREE.Vector3(0,0.08,85) }));
+    // Side path to temple B
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(60, 0.15, 6), M.path), { position: new THREE.Vector3(-80,0.08,40) }));
+    // Side path to temple C
+    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(50, 0.15, 6), M.path), { position: new THREE.Vector3(75,0.08,28) }));
+
+    // ─── FLYTHROUGH ───────────────────────────────────
+    const flyPts = [
+      new THREE.Vector3(-60, 10, -170),   // ocean
+      new THREE.Vector3(-40, 8, -125),    // dock approach
+      new THREE.Vector3(-10, 10, -80),    // harbor
+      new THREE.Vector3(0, 8, -35),       // through gate
+      new THREE.Vector3(5, 12, 15),       // agora
+      new THREE.Vector3(-60, 14, 30),     // past stoa
+      new THREE.Vector3(-125, 18, 160),   // amphitheatre
+      new THREE.Vector3(-50, 30, 140),    // acropolis approach
+      new THREE.Vector3(0, 50, 155),      // temple reveal
+      new THREE.Vector3(60, 45, 130),     // temple side
+      new THREE.Vector3(130, 35, 80),     // residential
+      new THREE.Vector3(150, 25, 0),      // wall view
+      new THREE.Vector3(90, 15, -100),    // coastal
+      new THREE.Vector3(-60, 10, -170),   // back to ocean
+    ];
+    const flyCurve = new THREE.CatmullRomCurve3(flyPts, true);
+    let flyT = 0;
+
+    const todEl = document.getElementById('tod');
+    const wavesEl = document.getElementById('waves');
+    const spdEl = document.getElementById('spd');
+    const flyEl = document.getElementById('fly');
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+
+      water.material.uniforms['time'].value += dt * (0.2 + (wavesEl.value/100)*0.5);
+      water.material.uniforms['distortionScale'].value = 1 + (wavesEl.value/100)*5;
+
+      // Boat bobbing
+      // (boats are static for perf — could animate later)
+
+      const tod = todEl.value / 100;
+      sun.position.set(200, 50+tod*350, 150);
+      sun.intensity = 0.8+tod*1.8;
+      renderer.toneMappingExposure = 0.3+tod*0.55;
+      const skyC = new THREE.Color().setHSL(0.58, 0.25+tod*0.3, 0.32+tod*0.42);
+      scene.background = skyC; scene.fog.color = skyC;
+
+      if (flyEl.checked) {
+        flyT = (flyT + 0.00004 + (spdEl.value/100)*0.00025) % 1;
+        const p = flyCurve.getPointAt(flyT);
+        const l = flyCurve.getPointAt((flyT+0.02)%1);
+        camera.position.copy(p);
+        camera.lookAt(l.x, l.y-2, l.z);
+      } else { orbit.update(); }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
