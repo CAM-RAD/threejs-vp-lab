@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Funky Brew Coffee — VP Lab</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{overflow:hidden;background:#f0ece6;font-family:'Segoe UI',sans-serif;touch-action:none}
+    canvas{display:block}
+    #nav{position:fixed;bottom:0;left:0;right:0;display:flex;z-index:20;background:rgba(255,255,255,0.92);border-top:2px solid #eee;backdrop-filter:blur(8px)}
+    #nav button{flex:1;padding:12px 4px;border:none;background:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#666;cursor:pointer;transition:all 0.3s}
+    #nav button.active{color:#fff}
+    #nav button:nth-child(1).active{background:#2dbcb6}
+    #nav button:nth-child(2).active{background:#f5a623}
+    #nav button:nth-child(3).active{background:#e84393}
+    #nav button:nth-child(4).active{background:#a3cb38}
+    #info-panel{position:fixed;top:0;left:0;right:0;z-index:15;padding:16px 20px;background:rgba(255,255,255,0.88);backdrop-filter:blur(10px);transform:translateY(-100%);transition:transform 0.4s ease;border-bottom:3px solid #eee}
+    #info-panel.show{transform:translateY(0)}
+    #info-panel h2{font-size:18px;margin-bottom:4px;letter-spacing:0.04em}
+    #info-panel p{font-size:12px;color:#666;line-height:1.5}
+    #info-panel .tag{display:inline-block;font-size:9px;padding:3px 8px;border-radius:10px;color:#fff;margin-right:5px;font-weight:700;letter-spacing:0.05em}
+    #title{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:25;text-align:center;pointer-events:none;opacity:1;transition:opacity 0.8s}
+    #title h1{font-size:28px;font-weight:900;letter-spacing:0.06em;color:#333}
+    #title p{font-size:11px;color:#999;letter-spacing:0.15em;text-transform:uppercase;margin-top:4px}
+    .fade-out{opacity:0!important}
+  </style>
+</head>
+<body>
+  <div id="title">
+    <h1>FUNKY BREW</h1>
+    <p>Tap a section below to explore</p>
+  </div>
+
+  <div id="info-panel">
+    <h2 id="section-title">—</h2>
+    <div id="section-tags"></div>
+    <p id="section-desc">—</p>
+  </div>
+
+  <div id="nav">
+    <button onclick="goTo(0)">Roastery</button>
+    <button onclick="goTo(1)">Cafe</button>
+    <button onclick="goTo(2)">Bakery</button>
+    <button onclick="goTo(3)">Patio</button>
+  </div>
+
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = false;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0ece6);
+
+    const camera = new THREE.PerspectiveCamera(35, W/H, 1, 200);
+
+    // ─── LIGHTING ─────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xfff5e6, 1.8);
+    sun.position.set(8, 15, 10);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xd4e5ff, 0.6);
+    fill.position.set(-8, 5, 8);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffeedd, 0.5);
+    rim.position.set(0, 3, -10);
+    scene.add(rim);
+
+    // ─── MATERIALS ────────────────────────────────────
+    function mat(color) { return new THREE.MeshLambertMaterial({ color }); }
+
+    const M = {
+      teal: mat(0x2dbcb6),
+      tealD: mat(0x1f918c),
+      orange: mat(0xf5a623),
+      orangeD: mat(0xd4871a),
+      pink: mat(0xe84393),
+      pinkD: mat(0xc2326e),
+      lime: mat(0xa3cb38),
+      limeD: mat(0x85a82e),
+      white: mat(0xffffff),
+      cream: mat(0xfff8ee),
+      gray: mat(0xaaaaaa),
+      darkGray: mat(0x555555),
+      wood: mat(0xc4883a),
+      woodD: mat(0x9a6a28),
+      red: mat(0xe74c3c),
+      brown: mat(0x6b4226),
+      stripe1: mat(0x2dbcb6),
+      stripe2: mat(0xf5a623),
+    };
+
+    // ─── HELPERS ──────────────────────────────────────
+    function box(w,h,d,m,x,y,z) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+      mesh.position.set(x,y,z); return mesh;
+    }
+    function cyl(rt,rb,h,s,m,x,y,z) {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s), m);
+      mesh.position.set(x,y,z); return mesh;
+    }
+
+    // ─── BUILD THE SHOP ───────────────────────────────
+    const shop = new THREE.Group();
+
+    // === LEVEL 0: PATIO (lime green, ground level) ====
+    // Main box
+    shop.add(box(5, 3, 4, M.lime, -1.5, 1.5, 1));
+    // Patio extension (open floor)
+    shop.add(box(4, 0.2, 4, M.cream, 2, 0.1, 1));
+    // Railing
+    shop.add(box(0.12, 0.8, 4, M.white, 4, 0.6, 1));
+    shop.add(box(4, 0.12, 0.12, M.white, 2, 1, 3));
+    // Bar stools
+    for (const sx of [1.2, 2.5, 3.8]) {
+      shop.add(cyl(0.08, 0.08, 0.8, 4, M.gray, sx, 0.5, 2.5));
+      shop.add(cyl(0.25, 0.25, 0.08, 6, M.pink, sx, 0.95, 2.5));
+    }
+    // Small awning (striped)
+    shop.add(box(2.5, 0.1, 1, M.pink, -1.5, 2.8, -1.2));
+    shop.add(box(2.5, 0.1, 1, M.white, -1.5, 2.75, -1.7));
+    // Window
+    shop.add(box(1.5, 1.2, 0.1, M.white, -1.5, 1.8, -1.02));
+    // Door
+    shop.add(box(0.8, 1.8, 0.1, M.limeD, 0.2, 0.9, -1.02));
+    // AC unit
+    shop.add(box(0.8, 0.5, 0.4, M.gray, -3.5, 1.5, 1));
+
+    // === LEVEL 1: BAKERY (pink, stacked right) ========
+    shop.add(box(3.5, 3, 4, M.pink, 1.5, 4.5, -0.5));
+    // Window
+    shop.add(box(1.8, 1, 0.1, M.white, 1.5, 5, -2.52));
+    // Awning
+    shop.add(box(3, 0.1, 0.8, M.pinkD, 1.5, 5.8, -2.8));
+    shop.add(box(3, 0.1, 0.8, M.white, 1.5, 5.75, -3.3));
+    // Display case inside (visible through window)
+    shop.add(box(1.2, 0.6, 0.8, M.cream, 1.5, 3.8, -1.8));
+    // Pastry dots
+    for (const px of [-0.3, 0, 0.3]) {
+      shop.add(cyl(0.1, 0.1, 0.08, 6, M.brown, 1.5+px, 4.15, -1.8));
+    }
+
+    // === LEVEL 1b: MAIN CAFE (orange, stacked left) ===
+    shop.add(box(4.5, 3, 5, M.orange, -1.5, 4.5, 0.5));
+    // Big "FUNKY BREW" sign area
+    shop.add(box(3.5, 0.8, 0.15, M.teal, -1.5, 5.6, -2.02));
+    // Awning over cafe
+    shop.add(box(4, 0.1, 1, M.orangeD, -1.5, 5.8, -2.3));
+    shop.add(box(4, 0.1, 1, M.white, -1.5, 5.75, -2.9));
+    // Counter inside
+    shop.add(box(2.5, 0.8, 0.4, M.wood, -1, 3.5, -0.5));
+    // Coffee machine
+    shop.add(box(0.5, 0.7, 0.4, M.darkGray, -2, 4.2, -0.5));
+    shop.add(box(0.15, 0.3, 0.15, M.gray, -2, 4.7, -0.5));
+    // Tiny people sitting (super simplified)
+    // Person A
+    shop.add(box(0.2, 0.5, 0.2, M.teal, 0, 3.55, 1));
+    shop.add(cyl(0.12, 0.12, 0.12, 5, M.cream, 0, 3.9, 1));
+    // Person B
+    shop.add(box(0.2, 0.5, 0.2, M.pink, 0.7, 3.55, 1.3));
+    shop.add(cyl(0.12, 0.12, 0.12, 5, M.cream, 0.7, 3.9, 1.3));
+    // Table
+    shop.add(cyl(0.06, 0.06, 0.5, 4, M.darkGray, 0.35, 3.35, 1.15));
+    shop.add(cyl(0.3, 0.3, 0.05, 6, M.wood, 0.35, 3.6, 1.15));
+    // Coffee cups on table
+    shop.add(cyl(0.06, 0.05, 0.1, 5, M.white, 0.2, 3.68, 1.1));
+    shop.add(cyl(0.06, 0.05, 0.1, 5, M.cream, 0.5, 3.68, 1.2));
+
+    // === LEVEL 2: ROASTERY (teal containers, top) =====
+    // Container 1
+    shop.add(box(3.5, 2.5, 3, M.teal, -0.5, 7.75, 0));
+    // Ridges on container
+    for (let ry = 7; ry <= 8.5; ry += 0.5) {
+      shop.add(box(3.55, 0.06, 3.05, M.tealD, -0.5, ry, 0));
+    }
+    // Container 2 (smaller, on top offset)
+    shop.add(box(2.5, 2, 2.5, M.teal, 0, 10, -0.3));
+    for (let ry = 9.3; ry <= 10.7; ry += 0.5) {
+      shop.add(box(2.55, 0.06, 2.55, M.tealD, 0, ry, -0.3));
+    }
+    // Vent/AC on top
+    shop.add(box(1.2, 0.4, 1.2, M.gray, 0, 11.2, -0.3));
+    shop.add(cyl(0.3, 0.3, 0.3, 6, M.darkGray, 0.3, 11.5, -0.1));
+    // Porthole window
+    shop.add(cyl(0.35, 0.35, 0.12, 8, M.white, -0.5, 7.8, -1.52));
+
+    // === PIPES (connecting containers) ================
+    // Vertical pipe
+    shop.add(cyl(0.15, 0.15, 4, 5, M.gray, -3.2, 5, -1));
+    shop.add(cyl(0.15, 0.15, 3, 5, M.gray, 3, 7, 0));
+    // Horizontal pipe
+    shop.add(box(2, 0.3, 0.3, M.gray, -2, 6.5, -1.5));
+    shop.add(box(1.5, 0.3, 0.3, M.gray, 1.5, 8.5, -1));
+    // Elbow joints
+    shop.add(cyl(0.22, 0.22, 0.2, 6, M.darkGray, -3.2, 6.5, -1));
+    shop.add(cyl(0.22, 0.22, 0.2, 6, M.darkGray, 3, 8.5, 0));
+
+    // === GROUND =======================================
+    shop.add(box(14, 0.15, 12, new THREE.MeshLambertMaterial({ color: 0xe0dbd4 }), 0, -0.08, 0));
+
+    scene.add(shop);
+
+    // ─── SECTION DATA ─────────────────────────────────
+    const sections = [
+      {
+        name: 'The Roastery',
+        desc: 'Where the magic begins. Single-origin beans roasted in small batches inside converted shipping containers. The aroma hits you two blocks away.',
+        tags: [{ text: 'Small Batch', color: '#2dbcb6' }, { text: 'Single Origin', color: '#1f918c' }],
+        cam: { x: 3, y: 12, z: 6 },
+        look: { x: -0.3, y: 9, z: -0.3 },
+      },
+      {
+        name: 'The Cafe',
+        desc: 'The heart of Funky Brew. Hand-pulled espresso, craft pour-overs, and the friendliest baristas in town. Grab a seat at the counter or people-watch from the window.',
+        tags: [{ text: 'Espresso Bar', color: '#f5a623' }, { text: 'Pour Over', color: '#d4871a' }],
+        cam: { x: -6, y: 6, z: 5 },
+        look: { x: -1.5, y: 4.5, z: 0.5 },
+      },
+      {
+        name: 'The Bakery',
+        desc: 'Fresh croissants, sourdough, and pastries baked daily. Everything pairs perfectly with our house blend. The display case is dangerous — you\'ve been warned.',
+        tags: [{ text: 'Fresh Daily', color: '#e84393' }, { text: 'Sourdough', color: '#c2326e' }],
+        cam: { x: 6, y: 6, z: -4 },
+        look: { x: 1.5, y: 4.5, z: -0.5 },
+      },
+      {
+        name: 'The Patio',
+        desc: 'Sun, coffee, and good vibes. Our open-air patio with bar seating is the perfect spot to start your morning or wind down after work.',
+        tags: [{ text: 'Outdoor', color: '#a3cb38' }, { text: 'Bar Seating', color: '#85a82e' }],
+        cam: { x: 7, y: 3, z: 5 },
+        look: { x: 1, y: 1, z: 1 },
+      },
+    ];
+
+    // ─── CAMERA ANIMATION ─────────────────────────────
+    let currentSection = -1;
+    const camTarget = new THREE.Vector3(8, 8, 8);
+    const lookTarget = new THREE.Vector3(0, 4, 0);
+    const camCurrent = new THREE.Vector3(8, 8, 8);
+    const lookCurrent = new THREE.Vector3(0, 4, 0);
+
+    // Default isometric view
+    camTarget.set(8, 8, 8);
+    lookTarget.set(0, 4, 0);
+    camCurrent.copy(camTarget);
+    lookCurrent.copy(lookTarget);
+    camera.position.copy(camCurrent);
+    camera.lookAt(lookCurrent);
+
+    const panel = document.getElementById('info-panel');
+    const titleDiv = document.getElementById('title');
+    const buttons = document.querySelectorAll('#nav button');
+
+    window.goTo = function(idx) {
+      // Fade out title on first click
+      titleDiv.classList.add('fade-out');
+
+      currentSection = idx;
+      const s = sections[idx];
+      camTarget.set(s.cam.x, s.cam.y, s.cam.z);
+      lookTarget.set(s.look.x, s.look.y, s.look.z);
+
+      // Update panel
+      document.getElementById('section-title').textContent = s.name;
+      document.getElementById('section-desc').textContent = s.desc;
+      document.getElementById('section-tags').innerHTML = s.tags.map(
+        t => `<span class="tag" style="background:${t.color}">${t.text}</span>`
+      ).join('');
+      panel.classList.add('show');
+
+      // Update nav
+      buttons.forEach((b, i) => b.classList.toggle('active', i === idx));
+
+      // Color panel border
+      const colors = ['#2dbcb6', '#f5a623', '#e84393', '#a3cb38'];
+      panel.style.borderBottomColor = colors[idx];
+    };
+
+    // ─── ANIMATION ────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Smooth camera lerp
+      camCurrent.lerp(camTarget, 0.03);
+      lookCurrent.lerp(lookTarget, 0.03);
+      camera.position.copy(camCurrent);
+      camera.lookAt(lookCurrent);
+
+      // Subtle idle rotation when in overview
+      if (currentSection === -1) {
+        const r = 10;
+        camTarget.x = Math.sin(t * 0.1) * r;
+        camTarget.z = Math.cos(t * 0.1) * r;
+        camTarget.y = 7 + Math.sin(t * 0.08) * 1;
+      }
+
+      // Subtle building sway
+      shop.rotation.y = Math.sin(t * 0.15) * 0.01;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
