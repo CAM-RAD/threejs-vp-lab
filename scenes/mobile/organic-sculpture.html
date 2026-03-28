@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Organic Sculpture — VP Lab</title>
+  <style>
+    *{margin:0;padding:0}body{overflow:hidden;background:#1a1814;touch-action:none}canvas{display:block}
+    #i{position:fixed;bottom:10px;left:10px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:10;pointer-events:none}
+  </style>
+</head>
+<body>
+  <div id="i">Organic Sculpture — VP Lab</div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1814);
+
+    const camera = new THREE.PerspectiveCamera(40, W/H, 0.5, 100);
+    camera.position.set(0, 2, 12);
+
+    // ─── BLOOM ────────────────────────────────────────
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.4, 0.6, 0.85);
+    composer.addPass(bloom);
+
+    // ─── GALLERY LIGHTING ─────────────────────────────
+    scene.add(new THREE.AmbientLight(0x2a2420, 0.6));
+
+    // Key light — warm from upper right
+    const key = new THREE.SpotLight(0xffeedd, 4, 30, Math.PI/5, 0.5, 1);
+    key.position.set(5, 8, 6);
+    key.lookAt(0, 1, 0);
+    scene.add(key);
+
+    // Fill — cool from left
+    const fill = new THREE.SpotLight(0xaabbdd, 1.5, 25, Math.PI/4, 0.7, 1);
+    fill.position.set(-6, 4, 4);
+    fill.lookAt(0, 1, 0);
+    scene.add(fill);
+
+    // Rim — subtle back light
+    const rim = new THREE.SpotLight(0xffd4a0, 2, 20, Math.PI/6, 0.3, 1);
+    rim.position.set(-2, 6, -6);
+    rim.lookAt(0, 0, 0);
+    scene.add(rim);
+
+    // Floor bounce
+    const bounce = new THREE.PointLight(0x443322, 0.8, 15);
+    bounce.position.set(0, -3, 2);
+    scene.add(bounce);
+
+    // ─── MATERIALS ────────────────────────────────────
+    // Polished wood
+    const woodMat = new THREE.MeshStandardMaterial({
+      color: 0xb87333,
+      roughness: 0.25,
+      metalness: 0.15,
+    });
+
+    // Darker wood grain
+    const darkWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x8B5E3C,
+      roughness: 0.3,
+      metalness: 0.1,
+    });
+
+    // Bronze metallic
+    const bronzeMat = new THREE.MeshStandardMaterial({
+      color: 0x8B7355,
+      roughness: 0.15,
+      metalness: 0.85,
+    });
+
+    // Emerald glass
+    const emeraldMat = new THREE.MeshStandardMaterial({
+      color: 0x1a8a5a,
+      roughness: 0.05,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.85,
+    });
+
+    // Deep blue
+    const blueMat = new THREE.MeshStandardMaterial({
+      color: 0x1a3388,
+      roughness: 0.08,
+      metalness: 0.5,
+      transparent: true,
+      opacity: 0.85,
+    });
+
+    // Deep crimson
+    const crimsonMat = new THREE.MeshStandardMaterial({
+      color: 0x8a2233,
+      roughness: 0.1,
+      metalness: 0.35,
+    });
+
+    // ─── ORGANIC FORM GENERATOR ───────────────────────
+    // Creates a flowing tube along a parametric curve with organic distortion
+    function organicTube(curveFunc, radius, tubularSegs, radialSegs, mat) {
+      const points = [];
+      for (let i = 0; i <= 80; i++) {
+        const t = i / 80;
+        points.push(curveFunc(t));
+      }
+      const curve = new THREE.CatmullRomCurve3(points);
+      const geo = new THREE.TubeGeometry(curve, tubularSegs, radius, radialSegs, false);
+
+      // Organic distortion — vary radius along length
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        const dist = Math.sqrt(x*x + z*z);
+        const bulge = 1 + Math.sin(y * 1.2) * 0.3 + Math.sin(y * 2.5 + 1) * 0.15;
+        // Only displace radially (away from center axis)
+        if (dist > 0.01) {
+          const scale = bulge;
+          pos.setX(i, x * scale);
+          pos.setZ(i, z * scale);
+        }
+      }
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+      return mesh;
+    }
+
+    // ─── FIGURE A — Main wood form (larger, embracing) ─
+    const figA = organicTube(
+      (t) => new THREE.Vector3(
+        Math.sin(t * Math.PI * 2) * 0.8 + Math.sin(t * Math.PI * 3) * 0.3,
+        t * 7 - 3.5,
+        Math.cos(t * Math.PI * 2) * 0.5 + Math.cos(t * Math.PI * 4) * 0.15
+      ),
+      0.55, 50, 8, woodMat
+    );
+
+    // ─── FIGURE B — Bronze intertwined form ───────────
+    const figB = organicTube(
+      (t) => new THREE.Vector3(
+        Math.cos(t * Math.PI * 2) * 0.7 + Math.sin(t * Math.PI * 4 + 1) * 0.25,
+        t * 7 - 3.5,
+        Math.sin(t * Math.PI * 2 + 0.5) * 0.6 + Math.cos(t * Math.PI * 3) * 0.2
+      ),
+      0.45, 50, 8, bronzeMat
+    );
+
+    // ─── FIGURE C — Emerald accent form ───────────────
+    const figC = organicTube(
+      (t) => new THREE.Vector3(
+        Math.sin(t * Math.PI * 2 + 2) * 0.5 + Math.cos(t * Math.PI * 5) * 0.15,
+        t * 6 - 2.5,
+        Math.cos(t * Math.PI * 2 + 1) * 0.65 + Math.sin(t * Math.PI * 3.5) * 0.2
+      ),
+      0.35, 40, 8, emeraldMat
+    );
+
+    // ─── FIGURE D — Blue accent form ──────────────────
+    const figD = organicTube(
+      (t) => new THREE.Vector3(
+        Math.cos(t * Math.PI * 2 + 1.5) * 0.55 + Math.sin(t * Math.PI * 3 + 2) * 0.2,
+        t * 5 - 2,
+        Math.sin(t * Math.PI * 2 + 2.5) * 0.5
+      ),
+      0.3, 35, 8, blueMat
+    );
+
+    // ─── FIGURE E — Dark wood wrapping form ───────────
+    const figE = organicTube(
+      (t) => new THREE.Vector3(
+        Math.sin(t * Math.PI * 3 + 0.5) * 0.6,
+        t * 7 - 3.5,
+        Math.cos(t * Math.PI * 2.5 + 1.8) * 0.7
+      ),
+      0.4, 45, 8, darkWoodMat
+    );
+
+    // ─── FIGURE F — Crimson accent ────────────────────
+    const figF = organicTube(
+      (t) => new THREE.Vector3(
+        Math.cos(t * Math.PI * 2.5 + 3) * 0.4,
+        t * 5.5 - 1.5,
+        Math.sin(t * Math.PI * 2 + 0.8) * 0.55
+      ),
+      0.25, 30, 6, crimsonMat
+    );
+
+    // ─── ORGANIC BULBS (joint masses) ─────────────────
+    // Add smooth sphere bulges where forms intersect
+    const bulbPositions = [
+      { p: [0.3, -2.5, 0.2], s: 0.9, m: woodMat },
+      { p: [-0.2, -1, 0.4], s: 0.7, m: bronzeMat },
+      { p: [0.5, 0.5, -0.3], s: 0.8, m: darkWoodMat },
+      { p: [-0.4, 1.5, 0.5], s: 0.65, m: emeraldMat },
+      { p: [0.1, 2.5, -0.2], s: 0.75, m: bronzeMat },
+      { p: [-0.3, 3.2, 0.3], s: 0.6, m: woodMat },
+      { p: [0.4, -3, -0.1], s: 0.85, m: woodMat },
+      { p: [-0.5, 0, -0.4], s: 0.55, m: blueMat },
+    ];
+    bulbPositions.forEach(b => {
+      const geo = new THREE.SphereGeometry(b.s, 10, 8);
+      // Distort slightly for organic feel
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        const noise = 1 + Math.sin(x*5)*0.08 + Math.cos(y*7)*0.06 + Math.sin(z*4)*0.05;
+        pos.setX(i, x * noise);
+        pos.setY(i, y * noise);
+        pos.setZ(i, z * noise);
+      }
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, b.m);
+      mesh.position.set(...b.p);
+      scene.add(mesh);
+    });
+
+    // ─── PEDESTAL ─────────────────────────────────────
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.5, 2.8, 0.8, 16),
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2, metalness: 0.6 })
+    );
+    pedestal.position.y = -4;
+    scene.add(pedestal);
+
+    // Pedestal top
+    const pedTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 2.5, 0.3, 16),
+      new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.15, metalness: 0.7 })
+    );
+    pedTop.position.y = -3.5;
+    scene.add(pedTop);
+
+    // ─── GALLERY FLOOR ────────────────────────────────
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshStandardMaterial({ color: 0x1a1814, roughness: 0.6, metalness: 0.3 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -4.4;
+    scene.add(floor);
+
+    // ─── GALLERY BACK WALL ────────────────────────────
+    const wall = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 15),
+      new THREE.MeshStandardMaterial({ color: 0x201c18, roughness: 0.85, metalness: 0.05 })
+    );
+    wall.position.set(0, 3, -8);
+    scene.add(wall);
+
+    // ─── SCULPTURE GROUP — for rotation ───────────────
+    // Group all sculpture pieces so they rotate together
+    const sculptureGroup = new THREE.Group();
+    scene.remove(figA, figB, figC, figD, figE, figF);
+    sculptureGroup.add(figA, figB, figC, figD, figE, figF);
+    // Add bulbs to group
+    // (they're already added to scene — we'll rotate camera instead)
+    scene.add(sculptureGroup);
+
+    // ─── ANIMATION ────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Slow camera orbit
+      const orbitRadius = 11 + Math.sin(t * 0.12) * 2;
+      const orbitSpeed = 0.08;
+      camera.position.x = Math.sin(t * orbitSpeed) * orbitRadius;
+      camera.position.z = Math.cos(t * orbitSpeed) * orbitRadius;
+      camera.position.y = 2 + Math.sin(t * 0.06) * 2;
+      camera.lookAt(0, 0.5, 0);
+
+      // Subtle light movement
+      key.position.x = 5 + Math.sin(t * 0.15) * 2;
+      fill.position.z = 4 + Math.cos(t * 0.12) * 2;
+
+      // Very subtle sculpture breathing
+      sculptureGroup.scale.y = 1 + Math.sin(t * 0.3) * 0.008;
+      sculptureGroup.rotation.y = Math.sin(t * 0.05) * 0.1;
+
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
