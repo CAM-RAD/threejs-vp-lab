@@ -1,363 +1,323 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Greek Epic (Mobile) — VP Lab</title>
+  <title>Greek Epic Mobile — VP Lab</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; background: #000; touch-action: none; }
-    canvas { display: block; }
-    #info { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,0.4); font-family: monospace; font-size: 10px; z-index: 10; pointer-events: none; }
-    #controls { position: fixed; top: 10px; right: 10px; color: rgba(255,255,255,0.8); font-family: monospace; font-size: 10px; z-index: 10; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 4px; line-height: 2.2; }
-    #controls label { display: block; }
-    #controls input[type="range"] { width: 100px; vertical-align: middle; }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{overflow:hidden;background:#000;touch-action:none}
+    canvas{display:block}
+    #i{position:fixed;bottom:10px;left:10px;color:rgba(255,255,255,0.4);font-family:monospace;font-size:10px;z-index:10;pointer-events:none}
+    #c{position:fixed;top:10px;right:10px;color:rgba(255,255,255,0.8);font-family:monospace;font-size:10px;z-index:10;background:rgba(0,0,0,0.55);padding:10px;border-radius:4px;line-height:2.2}
+    #c label{display:block}
+    #c input[type="range"]{width:100px;vertical-align:middle}
   </style>
 </head>
 <body>
-  <div id="info">Greek Epic Mobile — VP Lab</div>
-  <div id="controls">
+  <div id="i">Greek Epic Mobile — VP Lab v1.1</div>
+  <div id="c">
     <label>Sun <input type="range" id="tod" min="0" max="100" value="60"></label>
-    <label>Waves <input type="range" id="waves" min="0" max="100" value="30"></label>
     <label>Speed <input type="range" id="spd" min="0" max="100" value="20"></label>
     <label><input type="checkbox" id="fly" checked> Fly</label>
   </div>
 
   <script type="importmap">
-  { "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
-  }}
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
   </script>
 
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    // Water shader removed — too heavy for mobile
 
-    // ─── MOBILE-OPTIMIZED SETUP ───────────────────────
-    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power' });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(1); // Force 1x for mobile
-    renderer.shadowMap.enabled = false; // No shadows on mobile
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(1);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.75;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x7BA4C7);
-    scene.fog = new THREE.Fog(0x7BA4C7, 250, 700);
+    scene.fog = new THREE.Fog(0x7BA4C7, 200, 550);
 
-    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 5, 1000);
-    camera.position.set(-80, 40, 120);
+    const camera = new THREE.PerspectiveCamera(55, W/H, 3, 600);
+    camera.position.set(-60, 35, 100);
 
     const orbit = new OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true; orbit.target.set(0, 8, 0);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 8, 0);
 
-    // ─── LIGHTS (simple, no shadows) ──────────────────
+    // Lights
     const sun = new THREE.DirectionalLight(0xffeedd, 2.0);
-    sun.position.set(150, 250, 100);
+    sun.position.set(120, 200, 80);
     scene.add(sun);
-    scene.add(new THREE.AmbientLight(0x99aabb, 0.6));
-    scene.add(new THREE.HemisphereLight(0x88bbdd, 0x886633, 0.4));
+    scene.add(new THREE.AmbientLight(0x99aabb, 0.55));
+    scene.add(new THREE.HemisphereLight(0x88bbdd, 0x886633, 0.35));
 
-    // ─── MATERIALS (all Lambert for speed) ────────────
-    const M = {
-      marble: new THREE.MeshLambertMaterial({ color: 0xeee8d5 }),
-      aged: new THREE.MeshLambertMaterial({ color: 0xd8cfb0 }),
-      stone: new THREE.MeshLambertMaterial({ color: 0xb8a88a }),
-      stoneD: new THREE.MeshLambertMaterial({ color: 0x998870 }),
-      terra: new THREE.MeshLambertMaterial({ color: 0xc45a3c }),
-      wood: new THREE.MeshLambertMaterial({ color: 0x5c3a1e }),
-      sand: new THREE.MeshLambertMaterial({ color: 0xd4c5a0 }),
-      grass: new THREE.MeshLambertMaterial({ color: 0x7a9050 }),
-      olive: new THREE.MeshLambertMaterial({ color: 0x556B2F }),
-      dark: new THREE.MeshLambertMaterial({ color: 0x221100 }),
-      awning: new THREE.MeshLambertMaterial({ color: 0xc9a86c }),
-      path: new THREE.MeshLambertMaterial({ color: 0xcabb95 }),
-      wf: new THREE.MeshLambertMaterial({ color: 0x3388aa, transparent: true, opacity: 0.7 }),
-      cypress: new THREE.MeshLambertMaterial({ color: 0x1a3a1a }),
-      trunk: new THREE.MeshLambertMaterial({ color: 0x553311 }),
-      bronze: new THREE.MeshLambertMaterial({ color: 0x8B7355 }),
-      cliff: new THREE.MeshLambertMaterial({ color: 0x9a8a6a }),
-      sail: new THREE.MeshLambertMaterial({ color: 0xeeddcc, side: THREE.DoubleSide }),
-    };
+    // Materials — shared globally to minimize draw calls
+    const mMarble = new THREE.MeshLambertMaterial({ color: 0xeee8d5 });
+    const mAged = new THREE.MeshLambertMaterial({ color: 0xd8cfb0 });
+    const mStone = new THREE.MeshLambertMaterial({ color: 0xb8a88a });
+    const mWall = new THREE.MeshLambertMaterial({ color: 0x998870 });
+    const mTerra = new THREE.MeshLambertMaterial({ color: 0xc45a3c });
+    const mWood = new THREE.MeshLambertMaterial({ color: 0x5c3a1e });
+    const mSand = new THREE.MeshLambertMaterial({ color: 0xd4c5a0 });
+    const mGrass = new THREE.MeshLambertMaterial({ color: 0x7a9050 });
+    const mOcean = new THREE.MeshLambertMaterial({ color: 0x1a5c8a });
+    const mBronze = new THREE.MeshLambertMaterial({ color: 0x8B7355 });
+    const mSail = new THREE.MeshLambertMaterial({ color: 0xeeddcc, side: THREE.DoubleSide });
+    const mPath = new THREE.MeshLambertMaterial({ color: 0xcabb95 });
+    const mDark = new THREE.MeshLambertMaterial({ color: 0x1a1008 });
+    const mOlive = new THREE.MeshLambertMaterial({ color: 0x556B2F });
+
+    // Helper — add a box mesh quickly
+    function box(w,h,d,mat,x,y,z) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+      m.position.set(x,y,z);
+      scene.add(m);
+      return m;
+    }
+    function cyl(rt,rb,h,seg,mat,x,y,z) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg), mat);
+      m.position.set(x,y,z);
+      scene.add(m);
+      return m;
+    }
 
     // ─── GROUND ───────────────────────────────────────
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(350, 3, 320), M.sand), { position: new THREE.Vector3(0,-1.5,30) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(350, 3, 80), M.sand), { position: new THREE.Vector3(0,-5,-70) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(500, 2, 500), M.grass), { position: new THREE.Vector3(0,-7,30) }));
+    box(300, 2, 280, mSand, 0, -1, 20);        // city
+    box(300, 2, 60, mSand, 0, -4, -60);         // lower
+    box(400, 1.5, 400, mGrass, 0, -6, 20);      // grass
+    box(300, 1, 40, mSand, 0, -4.5, -95);       // beach
+    box(2000, 0.5, 2000, mOcean, 0, -6.5, -300);// ocean
 
-    // ─── WATER (simple animated plane — no render target) ──
-    const waterGeo = new THREE.PlaneGeometry(3000, 3000, 20, 20);
-    waterGeo.rotateX(-Math.PI / 2);
-    const waterMat = new THREE.MeshLambertMaterial({
-      color: 0x1a5c8a, transparent: true, opacity: 0.85,
-    });
-    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
-    waterMesh.position.set(0, -7, -250);
-    scene.add(waterMesh);
-    // Store original Y positions for wave animation
-    const waterVerts = waterGeo.attributes.position;
-    const waterOrigY = new Float32Array(waterVerts.count);
-    for (let i = 0; i < waterVerts.count; i++) waterOrigY[i] = waterVerts.getY(i);
+    // ─── ACROPOLIS + MAIN TEMPLE ──────────────────────
+    cyl(40, 50, 12, 6, mWall, 0, 6, 120);       // mound
+    // Steps (3 merged into bigger steps)
+    box(12, 2, 4, mAged, 0, 1, 105);
+    box(12, 2, 4, mAged, 0, 4, 110);
+    box(12, 2, 4, mAged, 0, 7, 115);
+    // Temple platform
+    box(30, 1.5, 42, mAged, 0, 12.8, 120);
+    // Columns — 8 total (4 front, 4 back)
+    for (const cx of [-11, -4, 4, 11]) {
+      cyl(0.8, 1, 11, 5, mMarble, cx, 19, 102);  // front
+      cyl(0.8, 1, 11, 5, mMarble, cx, 19, 138);  // back
+    }
+    // Side columns (2 each)
+    cyl(0.8, 1, 11, 5, mMarble, -11, 19, 120);
+    cyl(0.8, 1, 11, 5, mMarble, 11, 19, 120);
+    // Beam + roof
+    box(28, 1, 40, mMarble, 0, 25.5, 120);
+    box(30, 2, 42, mTerra, 0, 27.5, 120);
+    box(3, 4, 44, mTerra, 0, 29.5, 120);        // ridge
+    // Cella
+    box(18, 9, 28, mAged, 0, 18, 120);
 
-    // Beach
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(350, 1, 50), new THREE.MeshLambertMaterial({ color: 0xd4bf8a })), { position: new THREE.Vector3(0,-5.5,-120) }));
+    // ─── TEMPLE B (left) ──────────────────────────────
+    box(16, 1, 22, mAged, -80, 0.5, 45);
+    for (const cx of [-6, 0, 6]) {
+      cyl(0.6, 0.8, 8, 4, mMarble, -80+cx, 5, 36);
+      cyl(0.6, 0.8, 8, 4, mMarble, -80+cx, 5, 54);
+    }
+    box(15, 0.8, 21, mMarble, -80, 9.4, 45);
+    box(17, 1.5, 23, mTerra, -80, 10.8, 45);
+    box(10, 6, 14, mAged, -80, 4, 45);
 
-    // ─── LOW-POLY COLUMN (4 segments) ─────────────────
-    function col(h=12, r=1) {
-      const g = new THREE.Group();
-      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*1.4, r*1.4, 0.7, 4), M.marble), { position: new THREE.Vector3(0,0.35,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*0.8, r, h, 5), M.marble), { position: new THREE.Vector3(0,h/2+0.7,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(r*1.4, r*0.85, 1.2, 4), M.marble), { position: new THREE.Vector3(0,h+0.7,0) }));
-      return g;
+    // ─── TEMPLE C (right) ─────────────────────────────
+    box(17, 1, 24, mAged, 80, 0.5, 25);
+    for (const cx of [-6.5, 0, 6.5]) {
+      cyl(0.65, 0.85, 9, 4, mMarble, 80+cx, 5.5, 15);
+      cyl(0.65, 0.85, 9, 4, mMarble, 80+cx, 5.5, 35);
+    }
+    box(16, 0.8, 23, mMarble, 80, 10.4, 25);
+    box(18, 1.5, 25, mTerra, 80, 11.8, 25);
+    box(11, 7, 16, mAged, 80, 4.5, 25);
+
+    // ─── AGORA ────────────────────────────────────────
+    box(100, 0.2, 65, mPath, 0, 0.1, 10);
+
+    // Shops — just boxes with terracotta roofs (6 left, 6 right)
+    for (let i = 0; i < 5; i++) {
+      // Left shop
+      box(5.5, 4, 5.5, mStone, -44, 2, -10+i*13);
+      box(6.5, 0.2, 6.5, mTerra, -44, 4.1, -10+i*13);
+      // Right shop
+      box(5.5, 4, 5.5, mStone, 38, 2, -10+i*13);
+      box(6.5, 0.2, 6.5, mTerra, 38, 4.1, -10+i*13);
     }
 
-    // ─── TEMPLE (fewer columns for mobile) ────────────
-    function temple(w, d, ch, cr, cs) {
-      const g = new THREE.Group();
-      // Single platform instead of 3 steps
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w+4, 2, d+4), M.aged), { position: new THREE.Vector3(0,1,0) }));
-      const b = 2;
-      const hw = w/2-1, hd = d/2-1;
-      // Front and back columns only (skip sides for mobile)
-      for (let cx=-hw; cx<=hw+0.1; cx+=cs) {
-        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(cx,b,-hd) }));
-        g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(cx,b,hd) }));
-      }
-      // Just corner columns on sides
-      g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(-hw,b,0) }));
-      g.add(Object.assign(col(ch,cr), { position: new THREE.Vector3(hw,b,0) }));
-      // Beam + roof
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w+2, 1, d+2), M.marble), { position: new THREE.Vector3(0,b+ch+1.2,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w+3, 2, d+3), M.terra), { position: new THREE.Vector3(0,b+ch+3,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(3, 4, d+4), M.terra), { position: new THREE.Vector3(0,b+ch+4.5,0) }));
-      // Cella
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w-6, ch-2, d-6), M.aged), { position: new THREE.Vector3(0,b+(ch-2)/2+1,0) }));
-      return g;
+    // ─── STOA (colonnade) ─────────────────────────────
+    for (let cz = -10; cz <= 40; cz += 5) {
+      cyl(0.4, 0.55, 7, 4, mMarble, -52, 3.5, cz);
     }
+    box(5, 0.3, 55, mTerra, -52, 7.5, 15);      // roof
+    box(0.5, 7, 55, mStone, -54.5, 3.5, 15);    // back wall
 
-    // ─── SHOP (simplified) ────────────────────────────
-    function shop(x, z, r=0) {
-      const g = new THREE.Group();
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 4, 6), M.stone), { position: new THREE.Vector3(0,2,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(7, 0.2, 7), M.terra), { position: new THREE.Vector3(0,4.1,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.1, 2), M.awning), { position: new THREE.Vector3(0,3.3,-4) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.3), M.dark), { position: new THREE.Vector3(0,1.2,-3.05) }));
-      g.position.set(x, 0, z); g.rotation.y = r;
-      return g;
-    }
+    // ─── FOUNTAIN ─────────────────────────────────────
+    cyl(3.5, 4, 1.2, 6, mMarble, 0, 0.6, 10);
+    cyl(0.4, 0.5, 3, 5, mMarble, 0, 2.7, 10);
 
-    // ─── HOUSE (simple box) ───────────────────────────
-    function house(x, z, r=0) {
-      const g = new THREE.Group();
-      const w = 7+Math.random()*4, d = 8+Math.random()*3;
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), M.stone), { position: new THREE.Vector3(0,2,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(w+0.5, 0.3, d+0.5), M.terra), { position: new THREE.Vector3(0,4.15,0) }));
-      g.position.set(x, 0, z); g.rotation.y = r;
-      return g;
-    }
-
-    // ─── BUILD CITY ───────────────────────────────────
-
-    // Acropolis
-    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(45, 55, 14, 6), M.stoneD), { position: new THREE.Vector3(0,7,130) }));
-    for (let s=0; s<8; s++) {
-      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(12, 1, 2), M.aged), { position: new THREE.Vector3(0,s*1.3+0.5,108+s*2.5) }));
-    }
-    scene.add(Object.assign(temple(28, 44, 13, 1.1, 5.5), { position: new THREE.Vector3(0,14,130) }));
-
-    // Secondary temples
-    scene.add(Object.assign(temple(14, 20, 9, 0.7, 4.5), { position: new THREE.Vector3(-90,0,50) }));
-    scene.add(Object.assign(temple(16, 24, 10, 0.8, 5), { position: new THREE.Vector3(85,0,30) }));
-
-    // Amphitheatre (simplified — 5 rows)
-    const amphi = new THREE.Group();
-    for (let row=0; row<5; row++) {
-      const r = 18+row*4;
-      const geo = new THREE.RingGeometry(r, r+3, 12, 1, 0, Math.PI);
-      geo.rotateX(-Math.PI/2);
-      amphi.add(Object.assign(new THREE.Mesh(geo, M.aged), { position: new THREE.Vector3(0,row*1.5,0) }));
-    }
-    amphi.add(Object.assign(new THREE.Mesh(new THREE.CircleGeometry(15, 10), M.path), { rotation: new THREE.Euler(-Math.PI/2,0,0), position: new THREE.Vector3(0,0.1,0) }));
-    amphi.position.set(-100, 0, 140); amphi.rotation.y = -0.5;
-    scene.add(amphi);
-
-    // Agora floor
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(110, 0.2, 70), M.path), { position: new THREE.Vector3(0,0.1,15) }));
-
-    // Shops (10 total for mobile)
-    for (let i=0; i<4; i++) scene.add(shop(-48, -12+i*14, 0));
-    for (let i=0; i<4; i++) scene.add(shop(42, -12+i*14, Math.PI));
-    scene.add(shop(-15, -22, Math.PI/2));
-    scene.add(shop(10, -22, Math.PI/2));
-
-    // Stoa (fewer columns)
-    for (let cz=-15; cz<=45; cz+=6) {
-      scene.add(Object.assign(col(7, 0.5), { position: new THREE.Vector3(-58, 0, cz) }));
-    }
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 0.3, 65), M.terra), { position: new THREE.Vector3(-58,8.5,15) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.5, 7.5, 65), M.stone), { position: new THREE.Vector3(-61,4,15) }));
-
-    // City walls (simplified — front + sides, fewer towers)
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(100, 8, 2.5), M.stoneD), { position: new THREE.Vector3(-70,-1,-30) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(100, 8, 2.5), M.stoneD), { position: new THREE.Vector3(70,-1,-30) }));
+    // ─── CITY WALLS ───────────────────────────────────
+    // Front walls with gate gap
+    box(80, 7, 2, mWall, -55, 0.5, -28);
+    box(80, 7, 2, mWall, 55, 0.5, -28);
     // Gate towers
-    for (const sx of [-10, 10]) {
-      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(5, 11, 5), M.stoneD), { position: new THREE.Vector3(sx,2,-30) }));
-    }
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(15, 2.5, 3), M.stoneD), { position: new THREE.Vector3(0,5.5,-30) }));
+    box(4.5, 10, 4.5, mWall, -12, 2, -28);
+    box(4.5, 10, 4.5, mWall, 12, 2, -28);
+    box(14, 2, 3, mWall, 0, 5, -28);            // lintel
     // Side walls
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(2.5, 7, 220), M.stoneD), { position: new THREE.Vector3(-125,-0.5,60) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(2.5, 7, 220), M.stoneD), { position: new THREE.Vector3(125,-0.5,60) }));
+    box(2, 6, 180, mWall, -110, 0, 50);
+    box(2, 6, 180, mWall, 110, 0, 50);
 
-    // Aqueduct (5 arches for mobile)
-    for (let i=0; i<5; i++) {
-      const x = i*16;
-      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(2.5, 15, 2.5), M.stone), { position: new THREE.Vector3(x,7.5,0) }));
-      if (i<4) scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(13, 1.5, 2.5), M.stone), { position: new THREE.Vector3(x+8,12,0) }));
-      scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(16, 1, 2), M.aged), { position: new THREE.Vector3(x,15.5,0) }));
+    // ─── AMPHITHEATRE ─────────────────────────────────
+    // Simplified — 4 curved rows using ring geometry
+    for (let row = 0; row < 4; row++) {
+      const r = 14 + row * 3.5;
+      const geo = new THREE.RingGeometry(r, r + 2.5, 10, 1, 0, Math.PI);
+      geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, mAged);
+      m.position.set(-90, row * 1.3, 135);
+      m.rotation.y = -0.5;
+      scene.add(m);
     }
-    // Position the aqueduct group
-    const aqOffset = new THREE.Group();
-    scene.children.filter(c => c.position && c.position.z === 0 && c.position.y > 5).forEach(c => {
-      // Already placed — skip. We'll position manually below.
-    });
-    // (Aqueduct pillars already added at world origin — shift via a group next time. For now it works as a background element.)
 
-    // Houses (10 for mobile)
-    const housePos = [
-      {x:75,z:90,r:0.2},{x:95,z:110,r:-0.3},{x:110,z:85,r:0.5},
-      {x:85,z:130,r:0.1},{x:-80,z:95,r:-0.2},{x:-95,z:115,r:0.3},
-      {x:-75,z:130,r:-0.4},{x:30,z:80,r:0.1},{x:-35,z:85,r:0.3},{x:55,z:95,r:-0.1},
+    // ─── AQUEDUCT (4 pillars + beams) ─────────────────
+    for (let i = 0; i < 4; i++) {
+      const ax = -120 + i * 14;
+      box(2.2, 13, 2.2, mStone, ax, 6.5, 95);
+      if (i < 3) box(11, 1.5, 2.2, mStone, ax + 7, 11, 95);
+      box(14, 0.8, 2, mAged, ax, 13.5, 95);
+    }
+
+    // ─── HOUSES (8 simple boxes) ──────────────────────
+    const houseSpots = [
+      [70,80],[85,100],[100,80],[90,120],
+      [-70,85],[-85,105],[-75,125],[-60,110]
     ];
-    housePos.forEach(h => scene.add(house(h.x, h.z, h.r)));
+    houseSpots.forEach(([hx,hz]) => {
+      const w = 6+Math.random()*3;
+      box(w, 3.5, w+1, mStone, hx, 1.75, hz);
+      box(w+0.5, 0.2, w+1.5, mTerra, hx, 3.6, hz);
+    });
 
-    // Fountain
-    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(3.5, 4.5, 1.2, 8), M.marble), { position: new THREE.Vector3(0,0.6,15) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 0.2, 8), M.wf), { position: new THREE.Vector3(0,1.3,15) }));
+    // ─── STATUES (3) ──────────────────────────────────
+    [[- 18,10],[16,10],[0,-26]].forEach(([sx,sz]) => {
+      box(2, 3, 2, mMarble, sx, 1.5, sz);
+      cyl(0.5, 0.7, 4, 4, mBronze, sx, 5, sz);
+      cyl(0.7, 0.7, 1, 4, mBronze, sx, 7.3, sz); // head
+    });
 
-    // Statues (3 for mobile)
-    function statue(x, z) {
-      const g = new THREE.Group();
-      g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(2.5, 3.5, 2.5), M.marble), { position: new THREE.Vector3(0,1.75,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 5, 5), M.bronze), { position: new THREE.Vector3(0,6,0) }));
-      g.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.7, 4, 3), M.bronze), { position: new THREE.Vector3(0,9,0) }));
-      g.position.set(x, 0, z); return g;
-    }
-    scene.add(statue(-20, 15));
-    scene.add(statue(18, 15));
-    scene.add(statue(0, -28));
-
-    // Dock + boats
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(55, 1, 7), M.wood), { position: new THREE.Vector3(0,-5.5,-95) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(6, 1, 20), M.wood), { position: new THREE.Vector3(-20,-5.5,-108) }));
-    // 2 boats (simplified)
-    for (const bx of [-25, 15]) {
-      const b = new THREE.Group();
-      b.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 12), M.wood), { position: new THREE.Vector3(0,0,0) }));
-      b.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 10, 4), M.wood), { position: new THREE.Vector3(0,5,0) }));
-      b.add(Object.assign(new THREE.Mesh(new THREE.PlaneGeometry(6, 7), M.sail), { position: new THREE.Vector3(0,6,0) }));
-      b.position.set(bx, -6.5, -130); b.rotation.y = Math.random() * 0.6 - 0.3;
-      scene.add(b);
+    // ─── DOCK + BOATS ─────────────────────────────────
+    box(50, 0.8, 6, mWood, 0, -4.5, -75);
+    box(5, 0.8, 18, mWood, -18, -4.5, -87);
+    // 2 boats
+    for (const bx of [-22, 12]) {
+      box(3.5, 1.2, 10, mWood, bx, -5.5, -105);
+      cyl(0.12, 0.15, 8, 3, mWood, bx, -1.5, -105);
+      const sail = new THREE.Mesh(new THREE.PlaneGeometry(5, 6), mSail);
+      sail.position.set(bx, 0, -105);
+      scene.add(sail);
     }
 
-    // Cypress trees (instanced, 40 max for mobile)
-    const coneG = new THREE.ConeGeometry(1.5, 11, 4);
-    const trkG = new THREE.CylinderGeometry(0.2, 0.35, 2.5, 3);
-    const trees = new THREE.InstancedMesh(coneG, M.cypress, 40);
-    const trunks = new THREE.InstancedMesh(trkG, M.trunk, 40);
-    const dm = new THREE.Object3D();
-    let ti = 0;
-    for (let i=0; i<200 && ti<40; i++) {
-      const x = (Math.random()-0.5)*350;
-      const z = Math.random()*250 - 30;
-      if (Math.abs(x)<55 && Math.abs(z-15)<40) continue;
-      if (Math.sqrt(x*x+(z-130)**2)<55) continue;
-      if (z < -25) continue;
+    // ─── TREES (instanced — 20 cypress) ───────────────
+    const treeGeo = new THREE.ConeGeometry(1.3, 10, 3);
+    const treeInst = new THREE.InstancedMesh(treeGeo, new THREE.MeshLambertMaterial({ color: 0x1a3a1a }), 20);
+    const td = new THREE.Object3D();
+    let tIdx = 0;
+    for (let i = 0; i < 100 && tIdx < 20; i++) {
+      const x = (Math.random()-0.5)*250;
+      const z = Math.random()*200 - 20;
+      if (Math.abs(x) < 50 && Math.abs(z-10) < 40) continue;
+      if (Math.sqrt(x*x+(z-120)**2) < 50) continue;
+      if (z < -20) continue;
       const sc = 0.5+Math.random()*0.5;
-      dm.position.set(x, 5.5*sc, z); dm.scale.set(sc,sc,sc); dm.updateMatrix();
-      trees.setMatrixAt(ti, dm.matrix);
-      dm.position.y = 1.2*sc; dm.updateMatrix();
-      trunks.setMatrixAt(ti, dm.matrix);
-      ti++;
+      td.position.set(x, 5*sc, z);
+      td.scale.set(sc, sc, sc);
+      td.updateMatrix();
+      treeInst.setMatrixAt(tIdx++, td.matrix);
     }
-    trees.count = ti; trunks.count = ti;
-    scene.add(trees); scene.add(trunks);
+    treeInst.count = tIdx;
+    scene.add(treeInst);
 
-    // Mountains (6, lower poly)
-    for (let i=0; i<6; i++) {
-      const mh = 50+Math.random()*80;
-      const mw = 40+Math.random()*60;
+    // ─── OLIVE TREES (instanced — 15) ─────────────────
+    const oliveGeo = new THREE.SphereGeometry(3, 4, 3);
+    const oliveInst = new THREE.InstancedMesh(oliveGeo, mOlive, 15);
+    let oIdx = 0;
+    for (let gx = -130; gx <= -105; gx += 10) {
+      for (let gz = 20; gz <= 60; gz += 10) {
+        if (oIdx >= 15) break;
+        td.position.set(gx, 4, gz);
+        td.scale.set(0.7, 0.6, 0.7);
+        td.updateMatrix();
+        oliveInst.setMatrixAt(oIdx++, td.matrix);
+      }
+    }
+    oliveInst.count = oIdx;
+    scene.add(oliveInst);
+
+    // ─── MOUNTAINS ────────────────────────────────────
+    for (let i = 0; i < 5; i++) {
+      const mh = 50+Math.random()*70;
+      const mw = 35+Math.random()*50;
       const mt = new THREE.Mesh(
-        new THREE.ConeGeometry(mw, mh, 3+Math.floor(Math.random()*2)),
+        new THREE.ConeGeometry(mw, mh, 3),
         new THREE.MeshLambertMaterial({ color: new THREE.Color().setHSL(0.25, 0.15, 0.3+Math.random()*0.1) })
       );
-      mt.position.set(-200+i*80+Math.random()*20, mh/2-10, 280+Math.random()*80);
-      mt.rotation.y = Math.random()*3.14; scene.add(mt);
-      if (mh > 90) {
-        const cap = new THREE.Mesh(new THREE.ConeGeometry(mw*0.28, mh*0.15, 3),
-          new THREE.MeshLambertMaterial({ color: 0xeeeef5 }));
-        cap.position.set(mt.position.x, mh*0.65, mt.position.z); scene.add(cap);
+      mt.position.set(-150+i*75, mh/2-8, 250+Math.random()*60);
+      scene.add(mt);
+      if (mh > 80) {
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(mw*0.25, mh*0.15, 3),
+          new THREE.MeshLambertMaterial({ color: 0xeef0f5 }));
+        cap.position.set(mt.position.x, mh*0.62, mt.position.z);
+        scene.add(cap);
       }
     }
 
-    // Paths
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(8, 0.1, 35), M.path), { position: new THREE.Vector3(0,0.05,-12) }));
-    scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(10, 0.1, 55), M.path), { position: new THREE.Vector3(0,0.05,72) }));
+    // ─── PATHS ────────────────────────────────────────
+    box(7, 0.1, 30, mPath, 0, 0.05, -12);
+    box(10, 0.1, 50, mPath, 0, 0.05, 68);
 
     // ─── FLYTHROUGH ───────────────────────────────────
-    const flyPts = [
-      new THREE.Vector3(-50, 10, -100),
-      new THREE.Vector3(-10, 8, -55),
-      new THREE.Vector3(5, 10, -10),
-      new THREE.Vector3(-5, 12, 20),
-      new THREE.Vector3(-45, 14, 40),
-      new THREE.Vector3(-90, 16, 130),
-      new THREE.Vector3(-30, 28, 120),
-      new THREE.Vector3(5, 42, 125),
-      new THREE.Vector3(50, 35, 80),
-      new THREE.Vector3(100, 25, 15),
-      new THREE.Vector3(60, 12, -60),
-      new THREE.Vector3(-50, 10, -100),
+    const fp = [
+      new THREE.Vector3(-40, 8, -80),
+      new THREE.Vector3(-5, 7, -40),
+      new THREE.Vector3(5, 9, 0),
+      new THREE.Vector3(-5, 11, 20),
+      new THREE.Vector3(-40, 13, 40),
+      new THREE.Vector3(-80, 15, 120),
+      new THREE.Vector3(-25, 25, 115),
+      new THREE.Vector3(5, 38, 118),
+      new THREE.Vector3(45, 32, 70),
+      new THREE.Vector3(80, 22, 10),
+      new THREE.Vector3(50, 10, -50),
+      new THREE.Vector3(-40, 8, -80),
     ];
-    const flyCurve = new THREE.CatmullRomCurve3(flyPts, true);
-    let flyT = 0;
+    const fc = new THREE.CatmullRomCurve3(fp, true);
+    let ft = 0;
 
     const todEl = document.getElementById('tod');
-    const wavesEl = document.getElementById('waves');
     const spdEl = document.getElementById('spd');
     const flyEl = document.getElementById('fly');
-
     const clock = new THREE.Clock();
 
     function animate() {
       requestAnimationFrame(animate);
-      const dt = clock.getDelta();
-
-      // Simple vertex wave animation
-      const wTime = clock.getElapsedTime();
-      const wScale = 0.3 + (wavesEl.value / 100) * 1.2;
-      for (let i = 0; i < waterVerts.count; i++) {
-        const x = waterVerts.getX(i);
-        const z = waterVerts.getZ(i);
-        waterVerts.setY(i, waterOrigY[i] + Math.sin(x * 0.02 + wTime) * wScale + Math.cos(z * 0.015 + wTime * 0.7) * wScale * 0.6);
-      }
-      waterVerts.needsUpdate = true;
 
       const tod = todEl.value / 100;
-      sun.position.set(150, 50+tod*300, 100);
+      sun.position.set(120, 50+tod*250, 80);
       sun.intensity = 0.8+tod*1.5;
       renderer.toneMappingExposure = 0.3+tod*0.5;
-      const skyC = new THREE.Color().setHSL(0.58, 0.25+tod*0.3, 0.32+tod*0.4);
-      scene.background = skyC; scene.fog.color = skyC;
+      const sk = new THREE.Color().setHSL(0.58, 0.25+tod*0.3, 0.32+tod*0.4);
+      scene.background = sk; scene.fog.color = sk;
 
       if (flyEl.checked) {
-        flyT = (flyT + 0.00004 + (spdEl.value/100)*0.00022) % 1;
-        const p = flyCurve.getPointAt(flyT);
-        const l = flyCurve.getPointAt((flyT+0.022)%1);
+        ft = (ft + 0.00004 + (spdEl.value/100)*0.00022) % 1;
+        const p = fc.getPointAt(ft);
+        const l = fc.getPointAt((ft+0.022)%1);
         camera.position.copy(p);
         camera.lookAt(l.x, l.y-2, l.z);
       } else { orbit.update(); }
