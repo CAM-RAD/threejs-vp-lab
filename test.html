@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Test</title>
+  <style>*{margin:0}body{background:#000;overflow:hidden}canvas{display:block}#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#88a825;font-family:monospace;font-size:14px;z-index:5;pointer-events:none;text-align:center}</style>
+</head>
+<body>
+  <div id="msg">Loading...</div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js"}}
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    try {
+      const renderer = new THREE.WebGLRenderer({ antialias: false });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(1);
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a2e);
+
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 500);
+      camera.position.set(0, 30, 60);
+      camera.lookAt(0, 5, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const light = new THREE.DirectionalLight(0xffeedd, 1.5);
+      light.position.set(20, 40, 20);
+      scene.add(light);
+
+      // Ground
+      const ground = new THREE.Mesh(
+        new THREE.BoxGeometry(80, 1, 80),
+        new THREE.MeshLambertMaterial({ color: 0xd4c5a0 })
+      );
+      scene.add(ground);
+
+      // One temple — 4 columns + roof
+      const colMat = new THREE.MeshLambertMaterial({ color: 0xeee8d5 });
+      for (const pos of [[-6,0,-6],[6,0,-6],[-6,0,6],[6,0,6]]) {
+        const c = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1, 10, 5), colMat);
+        c.position.set(pos[0], 5.5, pos[2]);
+        scene.add(c);
+      }
+      // Roof
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(16, 1.5, 16),
+        new THREE.MeshLambertMaterial({ color: 0xc45a3c })
+      );
+      roof.position.y = 11.5;
+      scene.add(roof);
+
+      // Platform
+      const plat = new THREE.Mesh(
+        new THREE.BoxGeometry(18, 1, 18),
+        new THREE.MeshLambertMaterial({ color: 0xd8cfb0 })
+      );
+      plat.position.y = 0.5;
+      scene.add(plat);
+
+      document.getElementById('msg').textContent = 'WebGL OK';
+      setTimeout(() => { document.getElementById('msg').style.display = 'none'; }, 1500);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        camera.position.x = Math.sin(Date.now() * 0.0003) * 50;
+        camera.position.z = Math.cos(Date.now() * 0.0003) * 50;
+        camera.lookAt(0, 5, 0);
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    } catch(e) {
+      document.getElementById('msg').textContent = 'ERROR: ' + e.message;
+    }
+  </script>
+</body>
+</html>
