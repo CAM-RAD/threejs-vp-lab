@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Neon Portal — VP Lab</title>
+  <style>
+    *{margin:0;padding:0}body{overflow:hidden;background:#000;touch-action:none}canvas{display:block}
+    #i{position:fixed;bottom:10px;left:10px;color:rgba(255,255,255,0.3);font-family:monospace;font-size:10px;z-index:10;pointer-events:none}
+  </style>
+</head>
+<body>
+  <div id="i">Neon Portal — VP Lab</div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030308);
+    scene.fog = new THREE.FogExp2(0x030308, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(60, W/H, 0.5, 200);
+    camera.position.set(0, 2, 20);
+
+    // ─── BLOOM POST-PROCESSING ────────────────────────
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.5, 0.5, 0.2);
+    composer.addPass(bloom);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x111122, 0.3));
+    const pointA = new THREE.PointLight(0x00aaff, 3, 50);
+    pointA.position.set(-5, 5, 0);
+    scene.add(pointA);
+    const pointB = new THREE.PointLight(0xff3388, 3, 50);
+    pointB.position.set(5, 3, -5);
+    scene.add(pointB);
+    const pointC = new THREE.PointLight(0x33ffaa, 2, 40);
+    pointC.position.set(0, -2, 5);
+    scene.add(pointC);
+
+    // ─── EMISSIVE MATERIALS ───────────────────────────
+    const emCyan = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x00ddff, emissiveIntensity: 2.5 });
+    const emPink = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff2288, emissiveIntensity: 2.5 });
+    const emGreen = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x22ff88, emissiveIntensity: 2.0 });
+    const emPurple = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x8833ff, emissiveIntensity: 2.0 });
+    const emWhite = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, emissiveIntensity: 1.0 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x0a0a12, roughness: 0.3, metalness: 0.8 });
+
+    // ─── PORTAL RING ──────────────────────────────────
+    const portalGeo = new THREE.TorusGeometry(5, 0.15, 8, 60);
+    const portal = new THREE.Mesh(portalGeo, emCyan);
+    scene.add(portal);
+
+    // Inner ring
+    const innerRing = new THREE.Mesh(new THREE.TorusGeometry(4, 0.08, 8, 60), emPink);
+    scene.add(innerRing);
+
+    // Portal glow fill
+    const portalFill = new THREE.Mesh(
+      new THREE.CircleGeometry(4, 32),
+      new THREE.MeshStandardMaterial({
+        color: 0x000000, emissive: 0x0044aa, emissiveIntensity: 0.8,
+        transparent: true, opacity: 0.4, side: THREE.DoubleSide,
+      })
+    );
+    scene.add(portalFill);
+
+    // ─── FLOATING GEOMETRIC SHAPES ────────────────────
+    const shapes = [];
+    // Octahedrons
+    for (let i = 0; i < 8; i++) {
+      const geo = new THREE.OctahedronGeometry(0.3 + Math.random() * 0.5, 0);
+      const mat = [emCyan, emPink, emGreen, emPurple][i % 4];
+      const m = new THREE.Mesh(geo, mat);
+      const angle = (i / 8) * Math.PI * 2;
+      const radius = 6 + Math.random() * 4;
+      m.userData = { angle, radius, speed: 0.2 + Math.random() * 0.3, yOff: (Math.random() - 0.5) * 6, phase: Math.random() * 6 };
+      scene.add(m);
+      shapes.push(m);
+    }
+
+    // ─── PARTICLE FIELD ───────────────────────────────
+    const particleCount = 300;
+    const pGeo = new THREE.BufferGeometry();
+    const pPositions = new Float32Array(particleCount * 3);
+    const pSizes = new Float32Array(particleCount);
+    for (let i = 0; i < particleCount; i++) {
+      pPositions[i*3] = (Math.random() - 0.5) * 40;
+      pPositions[i*3+1] = (Math.random() - 0.5) * 30;
+      pPositions[i*3+2] = (Math.random() - 0.5) * 40;
+      pSizes[i] = Math.random() * 2 + 0.5;
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+    pGeo.setAttribute('size', new THREE.BufferAttribute(pSizes, 1));
+
+    const pMat = new THREE.PointsMaterial({
+      color: 0x6688ff,
+      size: 0.08,
+      transparent: true,
+      opacity: 0.7,
+      sizeAttenuation: true,
+    });
+    const particles = new THREE.Points(pGeo, pMat);
+    scene.add(particles);
+
+    // ─── GROUND GRID ──────────────────────────────────
+    const gridHelper = new THREE.GridHelper(60, 30, 0x112244, 0x0a0a20);
+    gridHelper.position.y = -5;
+    scene.add(gridHelper);
+
+    // ─── NEON PILLARS ─────────────────────────────────
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const x = Math.cos(angle) * 12;
+      const z = Math.sin(angle) * 12;
+      // Dark pillar
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 14, 5), darkMat);
+      pillar.position.set(x, 2, z);
+      scene.add(pillar);
+      // Neon strip on pillar
+      const strip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.32, 0.32, 14, 5, 1, true),
+        [emCyan, emPink, emGreen][i % 3]
+      );
+      strip.position.set(x, 2, z);
+      scene.add(strip);
+    }
+
+    // ─── ORBITING LIGHT TRAILS ────────────────────────
+    const trailCount = 3;
+    const trails = [];
+    for (let t = 0; t < trailCount; t++) {
+      const trailPts = [];
+      for (let j = 0; j <= 60; j++) {
+        const a = (j / 60) * Math.PI * 2;
+        const r = 7 + t * 2;
+        trailPts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a * 2) * 2 + t - 1, Math.sin(a) * r));
+      }
+      const curve = new THREE.CatmullRomCurve3(trailPts, true);
+      const tubeGeo = new THREE.TubeGeometry(curve, 60, 0.04, 4, true);
+      const tubeMat = [emCyan, emPink, emGreen][t];
+      const tube = new THREE.Mesh(tubeGeo, tubeMat);
+      scene.add(tube);
+      trails.push(tube);
+    }
+
+    // ─── CENTRAL FIGURE (abstract humanoid) ───────────
+    // Torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2, 0.6), darkMat);
+    torso.position.set(0, 0, 0);
+    scene.add(torso);
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 5), darkMat);
+    head.position.set(0, 1.7, 0);
+    scene.add(head);
+    // Eyes (emissive)
+    for (const ex of [-0.18, 0.18]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), emCyan);
+      eye.position.set(ex, 1.8, 0.4);
+      scene.add(eye);
+    }
+    // Arms
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.8, 0.3), darkMat);
+      arm.position.set(sx * 0.9, 0.4, 0);
+      arm.rotation.z = sx * 0.8;
+      scene.add(arm);
+    }
+    // Legs
+    for (const sx of [-0.3, 0.3]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.6, 0.35), darkMat);
+      leg.position.set(sx, -1.8, 0);
+      scene.add(leg);
+    }
+    // Neon outline strips on figure
+    const outlineRing = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.03, 4, 16), emCyan);
+    outlineRing.position.set(0, 0, 0);
+    outlineRing.rotation.x = Math.PI / 2;
+    scene.add(outlineRing);
+
+    // ─── ANIMATION ────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Camera orbit
+      camera.position.x = Math.sin(t * 0.15) * 18;
+      camera.position.z = Math.cos(t * 0.15) * 18;
+      camera.position.y = 3 + Math.sin(t * 0.1) * 3;
+      camera.lookAt(0, 0.5, 0);
+
+      // Portal rotation
+      portal.rotation.z = t * 0.3;
+      portal.rotation.x = Math.sin(t * 0.2) * 0.15;
+      innerRing.rotation.z = -t * 0.5;
+      innerRing.rotation.y = Math.sin(t * 0.3) * 0.1;
+      portalFill.rotation.z = t * 0.1;
+
+      // Portal pulse
+      const pulse = 1 + Math.sin(t * 2) * 0.05;
+      portal.scale.set(pulse, pulse, 1);
+
+      // Emissive pulse
+      emCyan.emissiveIntensity = 2 + Math.sin(t * 1.5) * 0.8;
+      emPink.emissiveIntensity = 2 + Math.sin(t * 1.5 + 2) * 0.8;
+      emGreen.emissiveIntensity = 1.5 + Math.sin(t * 1.5 + 4) * 0.6;
+
+      // Floating shapes
+      shapes.forEach(s => {
+        const d = s.userData;
+        s.position.x = Math.cos(d.angle + t * d.speed) * d.radius;
+        s.position.z = Math.sin(d.angle + t * d.speed) * d.radius;
+        s.position.y = d.yOff + Math.sin(t * 0.5 + d.phase) * 2;
+        s.rotation.x = t * d.speed * 2;
+        s.rotation.y = t * d.speed * 1.5;
+      });
+
+      // Trails rotation
+      trails.forEach((tr, i) => {
+        tr.rotation.y = t * (0.1 + i * 0.05);
+        tr.rotation.x = Math.sin(t * 0.2 + i) * 0.1;
+      });
+
+      // Particle drift
+      const pp = particles.geometry.attributes.position;
+      for (let i = 0; i < particleCount; i++) {
+        pp.array[i*3+1] += Math.sin(t + i) * 0.003;
+        pp.array[i*3] += Math.cos(t * 0.5 + i * 0.1) * 0.002;
+      }
+      pp.needsUpdate = true;
+
+      // Point lights orbit
+      pointA.position.x = Math.sin(t * 0.4) * 8;
+      pointA.position.z = Math.cos(t * 0.4) * 8;
+      pointB.position.x = Math.cos(t * 0.3) * 10;
+      pointB.position.z = Math.sin(t * 0.3) * 10;
+      pointC.position.y = -2 + Math.sin(t * 0.6) * 3;
+
+      // Figure subtle breathing
+      torso.scale.y = 1 + Math.sin(t * 1.2) * 0.02;
+      head.position.y = 1.7 + Math.sin(t * 0.8) * 0.05;
+      outlineRing.rotation.z = t * 0.5;
+      outlineRing.position.y = Math.sin(t) * 0.3;
+
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
