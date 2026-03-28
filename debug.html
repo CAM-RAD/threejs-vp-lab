@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Debug Test</title>
+  <style>
+    *{margin:0}body{background:#f2efe8;overflow:hidden;font-family:monospace}
+    canvas{display:block}
+    #log{position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font-size:10px;padding:10px;max-height:40vh;overflow-y:auto;z-index:100;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div id="log">Starting...</div>
+  <script>
+    const log = document.getElementById('log');
+    function L(msg) { log.textContent += '\n' + msg; log.scrollTop = log.scrollHeight; }
+    window.onerror = function(msg, url, line) { L('ERROR: ' + msg + ' line:' + line); };
+  </script>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js"}}
+  </script>
+  <script type="module">
+    const log = document.getElementById('log');
+    function L(msg) { log.textContent += '\n' + msg; log.scrollTop = log.scrollHeight; }
+
+    try {
+      L('Importing THREE...');
+      const THREE = await import('three');
+      L('THREE loaded: ' + THREE.REVISION);
+
+      L('Creating renderer...');
+      const R = new THREE.WebGLRenderer({ antialias: false });
+      R.setSize(window.innerWidth, window.innerHeight);
+      R.setPixelRatio(1);
+      document.body.appendChild(R.domElement);
+      L('Renderer OK. Canvas: ' + R.domElement.width + 'x' + R.domElement.height);
+
+      const gl = R.getContext();
+      L('WebGL: ' + gl.getParameter(gl.VERSION));
+      L('GPU: ' + (gl.getExtension('WEBGL_debug_renderer_info') ? gl.getParameter(gl.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL) : 'unknown'));
+      L('Max textures: ' + gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS));
+
+      L('Creating scene...');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf2efe8);
+      const cam = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight, 1, 200);
+      cam.position.set(14, 12, 14);
+      cam.lookAt(0, 5, 0);
+
+      L('Adding lights...');
+      scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+      const sun = new THREE.DirectionalLight(0xfffaf0, 2.0);
+      sun.position.set(10, 18, 12);
+      scene.add(sun);
+      L('Lights OK: ' + scene.children.length + ' objects');
+
+      L('Adding boxes...');
+      // Teal container
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(4,2.8,3.5), new THREE.MeshLambertMaterial({color:0x2dbcb6})).translateY(8.9));
+      L('Box 1 OK');
+      // Orange cafe
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(5.5,3.5,6), new THREE.MeshLambertMaterial({color:0xf5a623})).translateY(5.25).translateX(-1.5));
+      L('Box 2 OK');
+      // Pink bakery
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(4,3.5,4.5), new THREE.MeshLambertMaterial({color:0xe84393})).translateY(5.25).translateX(2.2).translateZ(-0.5));
+      L('Box 3 OK');
+      // Lime patio
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(5,3.5,5), new THREE.MeshLambertMaterial({color:0xa3cb38})).translateY(1.75).translateX(-2).translateZ(1.5));
+      L('Box 4 OK');
+      // Ground
+      scene.add(new THREE.Mesh(new THREE.BoxGeometry(18,0.3,14), new THREE.MeshLambertMaterial({color:0xe8e2d8})).translateY(-0.15));
+      L('Ground OK');
+
+      L('Total objects: ' + scene.children.length);
+      L('Attempting first render...');
+
+      R.render(scene, cam);
+      L('RENDER OK!');
+
+      // Animate
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = performance.now() * 0.001;
+        cam.position.x = Math.sin(t * 0.1) * 16;
+        cam.position.z = Math.cos(t * 0.1) * 16;
+        cam.lookAt(0, 5, 0);
+        R.render(scene, cam);
+      }
+      animate();
+      L('Animation running.');
+
+    } catch(e) {
+      L('FATAL: ' + e.message + '\n' + e.stack);
+    }
+  </script>
+</body>
+</html>
