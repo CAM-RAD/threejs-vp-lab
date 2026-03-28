@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>VP Lab — Launcher</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#13100d;color:#eee;font-family:monospace;padding:30px 20px}
+  h1{font-size:18px;font-weight:300;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+  .sub{color:#88a825;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:30px;display:block}
+  a{color:#ccc;text-decoration:none;display:block;padding:14px 16px;margin-bottom:8px;border:1px solid rgba(255,255,255,0.1);border-radius:4px;font-size:13px;transition:all 0.2s}
+  a:hover{background:rgba(136,168,37,0.15);border-color:#88a825;color:#fff}
+  .tag{font-size:9px;color:#88a825;margin-left:6px;text-transform:uppercase}
+  h2{font-size:11px;color:#88a825;letter-spacing:0.12em;text-transform:uppercase;margin:24px 0 12px}
+  .note{color:#555;font-size:10px;margin-top:25px;line-height:1.7}
+</style>
+<script>
+// Auto-append timestamp to all links to bust cache
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('a[data-scene]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      window.location.href = a.getAttribute('href') + '?t=' + Date.now();
+    });
+  });
+});
+</script>
+</head>
+<body>
+  <h1>Three.js VP Lab</h1>
+  <span class="sub">Tap any scene — auto cache-busted</span>
+
+  <h2>// Mobile Scenes</h2>
+  <a href="scenes/mobile/funky-brew.html" data-scene>Funky Brew Coffee Shop <span class="tag">interactive</span></a>
+  <a href="scenes/mobile/neon-portal.html" data-scene>Neon Portal <span class="tag">shader art</span></a>
+  <a href="scenes/mobile/organic-sculpture.html" data-scene>Organic Sculpture <span class="tag">gallery</span></a>
+  <a href="scenes/mobile/greek-epic-mobile.html" data-scene>Greek Epic City <span class="tag">environment</span></a>
+
+  <h2>// Desktop Scenes</h2>
+  <a href="scenes/desktop/greek-epic.html" data-scene>Greek Epic (Full) <span class="tag">desktop gpu</span></a>
+  <a href="scenes/desktop/greek-city.html" data-scene>Greek City <span class="tag">desktop gpu</span></a>
+  <a href="scenes/desktop/alpine-highway.html" data-scene>Alpine Highway <span class="tag">desktop gpu</span></a>
+
+  <h2>// Tests</h2>
+  <a href="test.html" data-scene>Minimal Test <span class="tag">webgl check</span></a>
+
+  <p class="note">All links auto-append a timestamp to bypass cache.<br>No more stale versions.</p>
+</body>
+</html>
