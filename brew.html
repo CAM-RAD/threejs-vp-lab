@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Funky Brew</title>
+  <style>
+    *{margin:0}body{background:#f2efe8;overflow:hidden;touch-action:none}canvas{display:block}
+    #nav{position:fixed;bottom:0;left:0;right:0;display:flex;z-index:20;background:rgba(255,255,255,0.92);border-top:2px solid #eee}
+    #nav button{flex:1;padding:14px 4px;border:none;background:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;cursor:pointer;transition:all 0.3s;font-family:sans-serif}
+    #nav button.active{color:#fff}
+    #nav button:nth-child(1).active{background:#2dbcb6}
+    #nav button:nth-child(2).active{background:#f5a623}
+    #nav button:nth-child(3).active{background:#e84393}
+    #nav button:nth-child(4).active{background:#a3cb38}
+    #panel{position:fixed;top:0;left:0;right:0;z-index:15;padding:12px 16px;background:rgba(255,255,255,0.92);transform:translateY(-100%);transition:transform 0.4s;border-bottom:3px solid #eee;font-family:sans-serif}
+    #panel.show{transform:translateY(0)}
+    #panel h2{font-size:16px;margin-bottom:2px}
+    #panel p{font-size:11px;color:#666;line-height:1.4}
+    #panel .tg{display:inline-block;font-size:8px;padding:2px 6px;border-radius:8px;color:#fff;margin-right:3px;font-weight:700}
+    #splash{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:25;text-align:center;pointer-events:none;transition:opacity 0.8s;font-family:sans-serif}
+    #splash h1{font-size:24px;font-weight:900;letter-spacing:0.08em;color:#333}
+    #splash span{font-size:10px;color:#aaa;letter-spacing:0.12em;text-transform:uppercase}
+    .gone{opacity:0!important}
+  </style>
+</head>
+<body>
+  <div id="splash"><h1>FUNKY BREW</h1><span>Tap below to explore</span></div>
+  <div id="panel"><h2 id="pn"></h2><div id="pt"></div><p id="pd"></p></div>
+  <div id="nav">
+    <button onclick="G(0)">Roastery</button>
+    <button onclick="G(1)">Cafe</button>
+    <button onclick="G(2)">Bakery</button>
+    <button onclick="G(3)">Patio</button>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js"}}
+  </script>
+  <script type="module">
+    // Using exact same pattern as debug.html which WORKED
+    const THREE = await import('three');
+
+    const R = new THREE.WebGLRenderer({ antialias: false });
+    R.setSize(window.innerWidth, window.innerHeight);
+    R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 1.0;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf2efe8);
+    const cam = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 1, 400);
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const sun = new THREE.DirectionalLight(0xfffaf0, 2.0);
+    sun.position.set(10, 18, 12);
+    scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xd0e0ff, 0.5);
+    fill.position.set(-8, 6, 8);
+    scene.add(fill);
+
+    // Helper
+    function B(w,h,d,c,x,y,z) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshLambertMaterial({color:c}));
+      m.position.set(x,y,z); scene.add(m); return m;
+    }
+
+    // ═══ BUILD COFFEE SHOP ════════════════════════════
+    // Ground
+    B(18, 0.3, 14, 0xe8e2d8, 0, -0.15, 0);
+
+    // PATIO (lime) — ground level
+    B(5, 3.5, 5, 0xa3cb38, -2, 1.75, 1.5);
+    B(4.5, 0.15, 4.5, 0xfff8ee, 3, 0.08, 1.5);      // patio floor
+    B(0.08, 1, 4.5, 0xffffff, 5.2, 0.58, 1.5);       // railing
+    B(1, 2.2, 0.12, 0x8a5e22, -2, 1.1, -1.04);       // door
+    B(1.6, 1.2, 0.12, 0xaaddee, -3.2, 2.1, -1.04);   // window
+    B(2.8, 0.1, 1.2, 0xc45a3c, -3, 3.1, -1.5);       // awning
+    B(0.9, 0.6, 0.45, 0x999999, -4.55, 2.3, 1.5);    // AC
+
+    // CAFE (orange) — level 1
+    B(5.5, 3.5, 6, 0xf5a623, -1.5, 5.25, 0.5);
+    B(3, 1.8, 0.12, 0xaaddee, -1.5, 5.2, -2.52);     // big window
+    B(3.5, 0.1, 1.2, 0xd48a18, -1.5, 6.5, -3);       // awning
+    B(3.8, 0.9, 0.2, 0x1a1a2e, -1.5, 6.3, -2.62);    // sign bg
+    B(3.4, 0.5, 0.22, 0x2dbcb6, -1.5, 6.3, -2.6);    // sign accent
+    B(3, 0.9, 0.5, 0xc4883a, -1, 4, 0);               // counter
+    B(0.5, 0.6, 0.4, 0x444444, -2.2, 4.7, 0);         // coffee machine
+
+    // BAKERY (pink) — level 1 side
+    B(4, 3.5, 4.5, 0xe84393, 2.2, 5.25, -0.5);
+    B(2, 1.2, 0.12, 0xaaddee, 2.2, 5.4, -2.78);      // window
+    B(2.8, 0.1, 1, 0xc22e78, 2.2, 6.3, -3.1);        // awning
+    B(1.5, 0.7, 0.8, 0xaaddee, 2.2, 4.15, -2);       // display case
+
+    // ROASTERY (teal) — top containers
+    B(4, 2.8, 3.5, 0x2dbcb6, 0, 8.9, 0.5);           // container 1
+    B(3, 2.2, 2.8, 0x2dbcb6, 0.5, 11.4, 0.2);        // container 2
+    B(1.3, 0.3, 1.3, 0x999999, 0.5, 12.65, 0.2);     // vent
+
+    // PIPES
+    B(0.24, 5, 0.24, 0x999999, -4.2, 5, -1);          // vertical
+    B(0.24, 4, 0.24, 0x999999, 4.3, 7.5, 0);          // vertical 2
+    B(2.2, 0.24, 0.24, 0x999999, -3, 7.2, -1.5);      // horizontal
+    B(1.8, 0.24, 0.24, 0x999999, 3.3, 9.5, -1);       // horizontal 2
+
+    // Total: ~28 objects. Should be fine.
+
+    // ═══ SECTIONS ═════════════════════════════════════
+    const S = [
+      {n:'The Roastery',d:'Small-batch roasting in converted shipping containers. Single-origin beans from Colombia, Ethiopia, and Guatemala.',
+        tg:[{t:'Small Batch',c:'#2dbcb6'},{t:'Single Origin',c:'#1a8a85'}],
+        cx:18,cy:22,cz:16,lx:0,ly:8,lz:0},
+      {n:'The Cafe',d:'Hand-pulled espresso, craft pour-overs, and cold brew on tap. Grab a seat and watch the baristas work.',
+        tg:[{t:'Espresso',c:'#f5a623'},{t:'Pour Over',c:'#d48a18'}],
+        cx:-25,cy:16,cz:20,lx:-1,ly:5,lz:0},
+      {n:'The Bakery',d:'Fresh croissants, sourdough, and cardamom buns every morning. Pairs perfectly with a cortado.',
+        tg:[{t:'Fresh Daily',c:'#e84393'},{t:'Sourdough',c:'#c22e78'}],
+        cx:25,cy:14,cz:-16,lx:2,ly:5,lz:-0.5},
+      {n:'The Patio',d:'Sun, espresso, and people-watching. Pink bar stools, open air, dogs welcome.',
+        tg:[{t:'Outdoor',c:'#a3cb38'},{t:'Dog Friendly',c:'#85a82e'}],
+        cx:25,cy:10,cz:20,lx:2,ly:1,lz:1.5},
+    ];
+
+    let cur = -1;
+    const cT = new THREE.Vector3(30,20,30);
+    const lT = new THREE.Vector3(0,5,0);
+    const cC = cT.clone();
+    const lC = lT.clone();
+
+    const panel = document.getElementById('panel');
+    const splash = document.getElementById('splash');
+    const btns = document.querySelectorAll('#nav button');
+
+    window.G = function(i) {
+      splash.classList.add('gone');
+      cur = i;
+      const s = S[i];
+      cT.set(s.cx,s.cy,s.cz);
+      lT.set(s.lx,s.ly,s.lz);
+      document.getElementById('pn').textContent = s.n;
+      document.getElementById('pd').textContent = s.d;
+      document.getElementById('pt').innerHTML = s.tg.map(t=>`<span class="tg" style="background:${t.c}">${t.t}</span>`).join('');
+      panel.classList.add('show');
+      panel.style.borderBottomColor = ['#2dbcb6','#f5a623','#e84393','#a3cb38'][i];
+      btns.forEach((b,j)=>b.classList.toggle('active',j===i));
+    };
+
+    // ═══ ANIMATE ══════════════════════════════════════
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = performance.now() * 0.001;
+      if (cur === -1) {
+        cT.x = Math.sin(t*0.08)*30;
+        cT.z = Math.cos(t*0.08)*30;
+        cT.y = 18+Math.sin(t*0.06)*3;
+        lT.set(0,5,0);
+      }
+      cC.lerp(cT,0.035);
+      lC.lerp(lT,0.035);
+      cam.position.copy(cC);
+      cam.lookAt(lC);
+      R.render(scene,cam);
+    }
+    animate();
+
+    window.addEventListener('resize',()=>{
+      cam.aspect=window.innerWidth/window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth,window.innerHeight);
+    });
+  </script>
+</body>
+</html>
