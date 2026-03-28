@@ -34,7 +34,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { Water } from 'three/addons/objects/Water.js';
+    // Water shader removed — too heavy for mobile
 
     // ─── MOBILE-OPTIMIZED SETUP ───────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power' });
@@ -89,18 +89,19 @@
     scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(350, 3, 80), M.sand), { position: new THREE.Vector3(0,-5,-70) }));
     scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(500, 2, 500), M.grass), { position: new THREE.Vector3(0,-7,30) }));
 
-    // ─── WATER (smaller texture for mobile) ───────────
-    const water = new Water(new THREE.PlaneGeometry(3000, 3000), {
-      textureWidth: 128, textureHeight: 128,
-      waterNormals: new THREE.TextureLoader().load(
-        'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/textures/waternormals.jpg',
-        t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; }
-      ),
-      sunDirection: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
-      sunColor: 0xffffff, waterColor: 0x001e4d, distortionScale: 2.5, fog: true,
+    // ─── WATER (simple animated plane — no render target) ──
+    const waterGeo = new THREE.PlaneGeometry(3000, 3000, 20, 20);
+    waterGeo.rotateX(-Math.PI / 2);
+    const waterMat = new THREE.MeshLambertMaterial({
+      color: 0x1a5c8a, transparent: true, opacity: 0.85,
     });
-    water.rotation.x = -Math.PI / 2; water.position.set(0, -7, -250);
-    scene.add(water);
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.position.set(0, -7, -250);
+    scene.add(waterMesh);
+    // Store original Y positions for wave animation
+    const waterVerts = waterGeo.attributes.position;
+    const waterOrigY = new Float32Array(waterVerts.count);
+    for (let i = 0; i < waterVerts.count; i++) waterOrigY[i] = waterVerts.getY(i);
 
     // Beach
     scene.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(350, 1, 50), new THREE.MeshLambertMaterial({ color: 0xd4bf8a })), { position: new THREE.Vector3(0,-5.5,-120) }));
@@ -336,8 +337,15 @@
       requestAnimationFrame(animate);
       const dt = clock.getDelta();
 
-      water.material.uniforms['time'].value += dt * (0.15 + (wavesEl.value/100)*0.4);
-      water.material.uniforms['distortionScale'].value = 0.8 + (wavesEl.value/100)*3;
+      // Simple vertex wave animation
+      const wTime = clock.getElapsedTime();
+      const wScale = 0.3 + (wavesEl.value / 100) * 1.2;
+      for (let i = 0; i < waterVerts.count; i++) {
+        const x = waterVerts.getX(i);
+        const z = waterVerts.getZ(i);
+        waterVerts.setY(i, waterOrigY[i] + Math.sin(x * 0.02 + wTime) * wScale + Math.cos(z * 0.015 + wTime * 0.7) * wScale * 0.6);
+      }
+      waterVerts.needsUpdate = true;
 
       const tod = todEl.value / 100;
       sun.position.set(150, 50+tod*300, 100);
