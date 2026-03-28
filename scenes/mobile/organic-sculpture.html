@@ -6,12 +6,24 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Organic Sculpture — VP Lab</title>
   <style>
-    *{margin:0;padding:0}body{overflow:hidden;background:#1a1814;touch-action:none}canvas{display:block}
-    #i{position:fixed;bottom:10px;left:10px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:10;pointer-events:none}
+    *{margin:0;padding:0}body{overflow:hidden;background:#f5f3f0;touch-action:none}canvas{display:block}
+    #i{position:fixed;bottom:10px;left:10px;color:rgba(0,0,0,0.25);font-family:monospace;font-size:10px;z-index:10;pointer-events:none}
+    #c{position:fixed;top:10px;right:10px;color:rgba(0,0,0,0.7);font-family:monospace;font-size:10px;z-index:10;background:rgba(255,255,255,0.75);padding:10px;border-radius:4px;line-height:2.2}
+    #c label{display:block}
+    #c input[type="range"]{width:100px;vertical-align:middle}
   </style>
 </head>
 <body>
   <div id="i">Organic Sculpture — VP Lab</div>
+  <div id="c">
+    <label>Rotate <input type="range" id="rot" min="0" max="360" value="0"></label>
+    <label>Height <input type="range" id="camH" min="0" max="100" value="50"></label>
+    <label>Zoom <input type="range" id="zoom" min="20" max="100" value="50"></label>
+    <label>Light Warm <input type="range" id="lWarm" min="0" max="100" value="70"></label>
+    <label>Light Cool <input type="range" id="lCool" min="0" max="100" value="40"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="30"></label>
+    <label><input type="checkbox" id="autoRot" checked> Auto Rotate</label>
+  </div>
   <script type="importmap">
   {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
   </script>
@@ -30,7 +42,7 @@
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1814);
+    scene.background = new THREE.Color(0xf5f3f0);
 
     const camera = new THREE.PerspectiveCamera(40, W/H, 0.5, 100);
     camera.position.set(0, 2, 12);
@@ -42,7 +54,7 @@
     composer.addPass(bloom);
 
     // ─── GALLERY LIGHTING ─────────────────────────────
-    scene.add(new THREE.AmbientLight(0x2a2420, 0.6));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
     // Key light — warm from upper right
     const key = new THREE.SpotLight(0xffeedd, 4, 30, Math.PI/5, 0.5, 1);
@@ -254,7 +266,7 @@
     // ─── GALLERY FLOOR ────────────────────────────────
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(40, 40),
-      new THREE.MeshStandardMaterial({ color: 0x1a1814, roughness: 0.6, metalness: 0.3 })
+      new THREE.MeshStandardMaterial({ color: 0xeeeae5, roughness: 0.7, metalness: 0.1 })
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -4.4;
@@ -263,7 +275,7 @@
     // ─── GALLERY BACK WALL ────────────────────────────
     const wall = new THREE.Mesh(
       new THREE.PlaneGeometry(30, 15),
-      new THREE.MeshStandardMaterial({ color: 0x201c18, roughness: 0.85, metalness: 0.05 })
+      new THREE.MeshStandardMaterial({ color: 0xeae6e0, roughness: 0.9, metalness: 0.0 })
     );
     wall.position.set(0, 3, -8);
     scene.add(wall);
@@ -277,6 +289,15 @@
     // (they're already added to scene — we'll rotate camera instead)
     scene.add(sculptureGroup);
 
+    // ─── CONTROLS REFS ─────────────────────────────────
+    const rotEl = document.getElementById('rot');
+    const camHEl = document.getElementById('camH');
+    const zoomEl = document.getElementById('zoom');
+    const lWarmEl = document.getElementById('lWarm');
+    const lCoolEl = document.getElementById('lCool');
+    const blmEl = document.getElementById('blm');
+    const autoRotEl = document.getElementById('autoRot');
+
     // ─── ANIMATION ────────────────────────────────────
     const clock = new THREE.Clock();
 
@@ -284,21 +305,40 @@
       requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
 
-      // Slow camera orbit
-      const orbitRadius = 11 + Math.sin(t * 0.12) * 2;
-      const orbitSpeed = 0.08;
-      camera.position.x = Math.sin(t * orbitSpeed) * orbitRadius;
-      camera.position.z = Math.cos(t * orbitSpeed) * orbitRadius;
-      camera.position.y = 2 + Math.sin(t * 0.06) * 2;
+      // Camera
+      const zoomVal = 7 + (zoomEl.value / 100) * 12;
+      const heightVal = -2 + (camHEl.value / 100) * 8;
+      let angle = (rotEl.value / 360) * Math.PI * 2;
+      if (autoRotEl.checked) {
+        angle += t * 0.15;
+      }
+      camera.position.x = Math.sin(angle) * zoomVal;
+      camera.position.z = Math.cos(angle) * zoomVal;
+      camera.position.y = heightVal;
       camera.lookAt(0, 0.5, 0);
 
-      // Subtle light movement
+      // Update rotation slider to match auto-rotate
+      if (autoRotEl.checked) {
+        rotEl.value = ((angle / (Math.PI * 2)) * 360) % 360;
+      }
+
+      // Lighting controls
+      const warmInt = (lWarmEl.value / 100) * 6;
+      const coolInt = (lCoolEl.value / 100) * 4;
+      key.intensity = warmInt;
+      rim.intensity = warmInt * 0.5;
+      fill.intensity = coolInt;
+      bounce.intensity = warmInt * 0.2;
+
+      // Bloom
+      bloom.strength = (blmEl.value / 100) * 1.2;
+
+      // Subtle light drift
       key.position.x = 5 + Math.sin(t * 0.15) * 2;
       fill.position.z = 4 + Math.cos(t * 0.12) * 2;
 
-      // Very subtle sculpture breathing
+      // Subtle breathing
       sculptureGroup.scale.y = 1 + Math.sin(t * 0.3) * 0.008;
-      sculptureGroup.rotation.y = Math.sin(t * 0.05) * 0.1;
 
       composer.render();
     }
