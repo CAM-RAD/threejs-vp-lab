@@ -121,7 +121,7 @@
       fog: false,
     });
     water.rotation.x = -Math.PI / 2;
-    water.position.y = 0;
+    water.position.y = -8;
     scene.add(water);
 
     // ─── MATERIALS ────────────────────────────────────
@@ -161,28 +161,33 @@
       const z = tPos.getZ(i);
 
       // Slope up from ocean (z negative = ocean side)
-      let y = Math.max(0, (z + 200) * 0.15);
+      let y = Math.max(-5, (z + 150) * 0.2 + 5);
       // Hills
-      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 20;
-      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 8;
-      // Flatten the city area
+      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 25;
+      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 10;
+      // Flatten and raise the city area
       const cityDist = Math.sqrt(x * x + (z - 50) * (z - 50));
       if (cityDist < 180) {
         const flatten = Math.max(0, 1 - cityDist / 180);
-        y = y * (1 - flatten * 0.6) + 10 * flatten;
+        y = y * (1 - flatten * 0.5) + 18 * flatten;
       }
-      // Slope to water at edges
-      if (z < -100) y *= Math.max(0, (z + 250) / 150);
+      // Slope to water at ocean edge
+      if (z < -80) {
+        const coastFade = Math.max(0, (z + 200) / 120);
+        y = y * coastFade + (-8) * (1 - coastFade);
+      }
 
       tPos.setY(i, y);
 
       // Vertex colors
-      if (y < 2) {
-        tColors[i*3] = 0.72; tColors[i*3+1] = 0.65; tColors[i*3+2] = 0.5; // sand
-      } else if (y < 20) {
+      if (y < -4) {
+        tColors[i*3] = 0.55; tColors[i*3+1] = 0.5; tColors[i*3+2] = 0.4; // underwater sand
+      } else if (y < 5) {
+        tColors[i*3] = 0.72; tColors[i*3+1] = 0.65; tColors[i*3+2] = 0.5; // beach sand
+      } else if (y < 25) {
         tColors[i*3] = 0.55; tColors[i*3+1] = 0.58; tColors[i*3+2] = 0.35; // grass
       } else {
-        tColors[i*3] = 0.45; tColors[i*3+1] = 0.48; tColors[i*3+2] = 0.32; // darker
+        tColors[i*3] = 0.45; tColors[i*3+1] = 0.48; tColors[i*3+2] = 0.32; // darker hillside
       }
     }
     terrainGeo.setAttribute('color', new THREE.BufferAttribute(tColors, 3));
@@ -443,19 +448,22 @@
       // Get terrain height at this point
       const gridX = ((x / terrainSize) + 0.5) * terrainRes;
       const gridZ = ((z / terrainSize) + 0.5) * terrainRes;
-      // Approximate height
-      let y = Math.max(0, (z + 200) * 0.15);
-      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 20;
-      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 8;
+      // Approximate height (must match terrain generation)
+      let y = Math.max(-5, (z + 150) * 0.2 + 5);
+      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 25;
+      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 10;
       const cityDist = Math.sqrt(x * x + (z - 50) * (z - 50));
       if (cityDist < 180) {
         const flatten = Math.max(0, 1 - cityDist / 180);
-        y = y * (1 - flatten * 0.6) + 10 * flatten;
+        y = y * (1 - flatten * 0.5) + 18 * flatten;
       }
-      if (z < -100) y *= Math.max(0, (z + 250) / 150);
+      if (z < -80) {
+        const coastFade = Math.max(0, (z + 200) / 120);
+        y = y * coastFade + (-8) * (1 - coastFade);
+      }
 
       // Don't place in water, on buildings, or too close to center
-      if (y > 3 && (cityDist > 80 || Math.random() < 0.15)) {
+      if (y > 5 && (cityDist > 90 || Math.random() < 0.1)) {
         const scale = 0.6 + Math.random() * 0.6;
         dummy.position.set(x, y + 9 * scale, z);
         dummy.scale.set(scale, scale, scale);
