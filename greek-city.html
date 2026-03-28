@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ancient Greek City — Three.js VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info {
+      position: fixed; bottom: 20px; left: 20px;
+      color: rgba(255,255,255,0.6); font-family: monospace; font-size: 12px;
+      z-index: 10; pointer-events: none;
+    }
+    #controls {
+      position: fixed; top: 20px; right: 20px;
+      color: rgba(255,255,255,0.8); font-family: monospace; font-size: 11px;
+      z-index: 10; background: rgba(0,0,0,0.6); padding: 15px;
+      border-radius: 4px; line-height: 1.8;
+    }
+    #controls label { display: block; margin-bottom: 4px; }
+    #controls input[type="range"] { width: 140px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="info">Ancient Greek City — VP Lab v0.2</div>
+  <div id="controls">
+    <label>Sun Height <input type="range" id="sunHeight" min="0" max="100" value="60"></label>
+    <label>Sun Angle <input type="range" id="sunAngle" min="0" max="360" value="45"></label>
+    <label>Wave Scale <input type="range" id="waveScale" min="0" max="100" value="50"></label>
+    <label>Camera Speed <input type="range" id="camSpeed" min="0" max="100" value="25"></label>
+    <label><input type="checkbox" id="autoFly" checked> Auto Fly</label>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { Water } from 'three/addons/objects/Water.js';
+    import { Sky } from 'three/addons/objects/Sky.js';
+
+    // ─── SCENE ────────────────────────────────────────
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.6;
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 20000);
+    camera.position.set(-200, 80, 300);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2.05;
+
+    // ─── SKY ──────────────────────────────────────────
+    const sky = new Sky();
+    sky.scale.setScalar(10000);
+    scene.add(sky);
+
+    const skyUniforms = sky.material.uniforms;
+    skyUniforms['turbidity'].value = 4;
+    skyUniforms['rayleigh'].value = 2;
+    skyUniforms['mieCoefficient'].value = 0.005;
+    skyUniforms['mieDirectionalG'].value = 0.8;
+
+    const sunPos = new THREE.Vector3();
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+
+    function updateSun(elevation, azimuth) {
+      const phi = THREE.MathUtils.degToRad(90 - elevation);
+      const theta = THREE.MathUtils.degToRad(azimuth);
+      sunPos.setFromSphericalCoords(1, phi, theta);
+      sky.material.uniforms['sunPosition'].value.copy(sunPos);
+      const renderTarget = pmremGenerator.fromScene(sky);
+      scene.environment = renderTarget.texture;
+      sunLight.position.copy(sunPos).multiplyScalar(500);
+    }
+
+    // ─── LIGHTING ─────────────────────────────────────
+    const ambientLight = new THREE.AmbientLight(0xccaa88, 0.3);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffeedd, 2.0);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.camera.left = -300;
+    sunLight.shadow.camera.right = 300;
+    sunLight.shadow.camera.top = 300;
+    sunLight.shadow.camera.bottom = -300;
+    sunLight.shadow.camera.far = 1200;
+    scene.add(sunLight);
+
+    // ─── WATER ────────────────────────────────────────
+    const waterGeo = new THREE.PlaneGeometry(10000, 10000);
+    const water = new Water(waterGeo, {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals: new THREE.TextureLoader().load(
+        'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/textures/waternormals.jpg',
+        (tex) => { tex.wrapS = tex.wrapT = THREE.RepeatWrapping; }
+      ),
+      sunDirection: new THREE.Vector3(),
+      sunColor: 0xffffff,
+      waterColor: 0x001e4d,
+      distortionScale: 3.7,
+      fog: false,
+    });
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = 0;
+    scene.add(water);
+
+    // ─── MATERIALS ────────────────────────────────────
+    const marbleMat = new THREE.MeshStandardMaterial({
+      color: 0xeee8d5, roughness: 0.4, metalness: 0.0,
+    });
+    const marbleAgeMat = new THREE.MeshStandardMaterial({
+      color: 0xd4c9a8, roughness: 0.6, metalness: 0.0,
+    });
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0xb8a88a, roughness: 0.85, metalness: 0.0,
+    });
+    const terracottaMat = new THREE.MeshStandardMaterial({
+      color: 0xc45a3c, roughness: 0.7, metalness: 0.0,
+    });
+    const darkWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x5c3a1e, roughness: 0.8, metalness: 0.0,
+    });
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0xc9b896, roughness: 0.95, metalness: 0.0,
+    });
+    const pathMat = new THREE.MeshStandardMaterial({
+      color: 0xd4c5a0, roughness: 0.9, metalness: 0.0,
+    });
+
+    // ─── TERRAIN (coastal hillside) ───────────────────
+    const terrainSize = 800;
+    const terrainRes = 128;
+    const terrainGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainRes, terrainRes);
+    terrainGeo.rotateX(-Math.PI / 2);
+
+    const tPos = terrainGeo.attributes.position;
+    const tColors = new Float32Array(tPos.count * 3);
+
+    for (let i = 0; i < tPos.count; i++) {
+      const x = tPos.getX(i);
+      const z = tPos.getZ(i);
+
+      // Slope up from ocean (z negative = ocean side)
+      let y = Math.max(0, (z + 200) * 0.15);
+      // Hills
+      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 20;
+      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 8;
+      // Flatten the city area
+      const cityDist = Math.sqrt(x * x + (z - 50) * (z - 50));
+      if (cityDist < 180) {
+        const flatten = Math.max(0, 1 - cityDist / 180);
+        y = y * (1 - flatten * 0.6) + 10 * flatten;
+      }
+      // Slope to water at edges
+      if (z < -100) y *= Math.max(0, (z + 250) / 150);
+
+      tPos.setY(i, y);
+
+      // Vertex colors
+      if (y < 2) {
+        tColors[i*3] = 0.72; tColors[i*3+1] = 0.65; tColors[i*3+2] = 0.5; // sand
+      } else if (y < 20) {
+        tColors[i*3] = 0.55; tColors[i*3+1] = 0.58; tColors[i*3+2] = 0.35; // grass
+      } else {
+        tColors[i*3] = 0.45; tColors[i*3+1] = 0.48; tColors[i*3+2] = 0.32; // darker
+      }
+    }
+    terrainGeo.setAttribute('color', new THREE.BufferAttribute(tColors, 3));
+    terrainGeo.computeVertexNormals();
+
+    const terrainMesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.9, metalness: 0, flatShading: false,
+    }));
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+
+    // ─── HELPER: COLUMN ───────────────────────────────
+    function createColumn(x, y, z, height = 16, radius = 1.2) {
+      const group = new THREE.Group();
+      // Base
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.5, radius * 1.6, 1.5, 8), marbleMat);
+      base.position.set(0, 0.75, 0);
+      base.castShadow = true;
+      group.add(base);
+      // Shaft (fluted look via lower segment count)
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.9, radius, height, 12), marbleMat);
+      shaft.position.set(0, height / 2 + 1.5, 0);
+      shaft.castShadow = true;
+      group.add(shaft);
+      // Capital
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.8, radius * 1.0, 2, 8), marbleMat);
+      cap.position.set(0, height + 1.5, 0);
+      cap.castShadow = true;
+      group.add(cap);
+      group.position.set(x, y, z);
+      return group;
+    }
+
+    // ─── HELPER: TEMPLE ───────────────────────────────
+    function createTemple(x, y, z, opts = {}) {
+      const w = opts.width || 30;
+      const d = opts.depth || 50;
+      const colH = opts.colHeight || 16;
+      const colR = opts.colRadius || 1.2;
+      const colSpacing = opts.colSpacing || 6;
+      const group = new THREE.Group();
+
+      // Platform (stylobate)
+      const steps = 3;
+      for (let s = 0; s < steps; s++) {
+        const stepGeo = new THREE.BoxGeometry(w + 6 - s * 2, 1.2, d + 6 - s * 2);
+        const step = new THREE.Mesh(stepGeo, marbleAgeMat);
+        step.position.y = s * 1.2 + 0.6;
+        step.castShadow = true;
+        step.receiveShadow = true;
+        group.add(step);
+      }
+      const platTop = steps * 1.2;
+
+      // Columns along perimeter
+      const halfW = w / 2 - 1;
+      const halfD = d / 2 - 1;
+      for (let cx = -halfW; cx <= halfW; cx += colSpacing) {
+        group.add(createColumn(cx, platTop, -halfD, colH, colR));
+        group.add(createColumn(cx, platTop, halfD, colH, colR));
+      }
+      for (let cz = -halfD + colSpacing; cz < halfD; cz += colSpacing) {
+        group.add(createColumn(-halfW, platTop, cz, colH, colR));
+        group.add(createColumn(halfW, platTop, cz, colH, colR));
+      }
+
+      // Entablature (beam on top)
+      const beam = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 2, 2, d + 2), marbleMat
+      );
+      beam.position.y = platTop + colH + 2.5;
+      beam.castShadow = true;
+      group.add(beam);
+
+      // Pediment (triangular roof on short sides)
+      const pedGeo = new THREE.BufferGeometry();
+      const hw = (w + 2) / 2;
+      const pedH = 8;
+      const hd = (d + 2) / 2;
+      // Front pediment
+      for (const side of [-1, 1]) {
+        const triGeo = new THREE.BufferGeometry();
+        const verts = new Float32Array([
+          -hw, 0, 0,  hw, 0, 0,  0, pedH, 0,
+        ]);
+        triGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        triGeo.computeVertexNormals();
+        const tri = new THREE.Mesh(triGeo, marbleMat);
+        tri.position.set(0, platTop + colH + 3.5, side * hd);
+        tri.castShadow = true;
+        group.add(tri);
+      }
+
+      // Roof
+      const roofGeo = new THREE.BoxGeometry(w + 4, 1.5, d + 4);
+      const roof = new THREE.Mesh(roofGeo, terracottaMat);
+      roof.position.y = platTop + colH + 7;
+      roof.castShadow = true;
+      group.add(roof);
+
+      // Cella (inner chamber)
+      const cellaGeo = new THREE.BoxGeometry(w - 8, colH - 2, d - 8);
+      const cella = new THREE.Mesh(cellaGeo, new THREE.MeshStandardMaterial({
+        color: 0xddd5c0, roughness: 0.7, metalness: 0, side: THREE.DoubleSide,
+      }));
+      cella.position.y = platTop + (colH - 2) / 2 + 1;
+      cella.castShadow = true;
+      group.add(cella);
+
+      group.position.set(x, y, z);
+      return group;
+    }
+
+    // ─── HELPER: SHOP/STALL ───────────────────────────
+    function createShop(x, y, z, rotation = 0) {
+      const group = new THREE.Group();
+      // Walls
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 10), stoneMat);
+      wall.position.y = 3;
+      wall.castShadow = true;
+      group.add(wall);
+      // Awning
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(10, 0.3, 4), terracottaMat);
+      awning.position.set(0, 5.5, -6);
+      awning.rotation.x = 0.15;
+      awning.castShadow = true;
+      group.add(awning);
+      // Awning supports
+      for (const sx of [-4, 4]) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 5, 6), darkWoodMat);
+        pole.position.set(sx, 3, -7.5);
+        group.add(pole);
+      }
+      // Counter
+      const counter = new THREE.Mesh(new THREE.BoxGeometry(9, 1, 2), darkWoodMat);
+      counter.position.set(0, 2.5, -5.5);
+      group.add(counter);
+      // Goods on counter (jars/urns)
+      for (let j = -3; j <= 3; j += 2) {
+        const jar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.3, 0.5, 1.5, 8), terracottaMat
+        );
+        jar.position.set(j, 3.8, -5.5);
+        group.add(jar);
+      }
+      group.position.set(x, y, z);
+      group.rotation.y = rotation;
+      return group;
+    }
+
+    // ─── BUILD THE CITY ───────────────────────────────
+
+    // Main temple (Parthenon-like) on the hill
+    const mainTemple = createTemple(0, 25, 120, {
+      width: 36, depth: 60, colHeight: 18, colRadius: 1.4, colSpacing: 6,
+    });
+    scene.add(mainTemple);
+
+    // Smaller temple near the waterfront
+    const smallTemple = createTemple(-80, 8, -30, {
+      width: 20, depth: 30, colHeight: 12, colRadius: 1.0, colSpacing: 5,
+    });
+    scene.add(smallTemple);
+
+    // Third temple offset
+    const thirdTemple = createTemple(100, 15, 80, {
+      width: 22, depth: 35, colHeight: 14, colRadius: 1.1, colSpacing: 5.5,
+    });
+    scene.add(thirdTemple);
+
+    // ─── AGORA (marketplace) ──────────────────────────
+    // Stone paved area
+    const agoraFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(120, 0.5, 80), pathMat
+    );
+    agoraFloor.position.set(-10, 8.5, 20);
+    agoraFloor.receiveShadow = true;
+    scene.add(agoraFloor);
+
+    // Shops around the agora
+    const shopPositions = [
+      { x: -60, z: -10, r: 0 },
+      { x: -60, z: 10, r: 0 },
+      { x: -60, z: 30, r: 0 },
+      { x: -60, z: 50, r: 0 },
+      { x: 40, z: -10, r: Math.PI },
+      { x: 40, z: 10, r: Math.PI },
+      { x: 40, z: 30, r: Math.PI },
+      { x: 40, z: 50, r: Math.PI },
+      { x: -30, z: -20, r: Math.PI / 2 },
+      { x: -10, z: -20, r: Math.PI / 2 },
+      { x: 10, z: -20, r: Math.PI / 2 },
+    ];
+    shopPositions.forEach(sp => {
+      scene.add(createShop(sp.x, 8.5, sp.z, sp.r));
+    });
+
+    // Stoa (covered walkway) — row of columns
+    for (let cz = -15; cz <= 55; cz += 5) {
+      scene.add(createColumn(-70, 8.5, cz, 10, 0.8));
+    }
+    // Stoa roof
+    const stoaRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(6, 0.8, 75), terracottaMat
+    );
+    stoaRoof.position.set(-70, 19.5, 20);
+    stoaRoof.castShadow = true;
+    scene.add(stoaRoof);
+
+    // ─── HARBOR / DOCK ────────────────────────────────
+    const dockGeo = new THREE.BoxGeometry(60, 2, 8);
+    const dock = new THREE.Mesh(dockGeo, darkWoodMat);
+    dock.position.set(-40, 1, -160);
+    dock.castShadow = true;
+    scene.add(dock);
+
+    // Dock pilings
+    for (let dx = -25; dx <= 25; dx += 10) {
+      const piling = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.6, 6, 6), darkWoodMat
+      );
+      piling.position.set(-40 + dx, -1, -160);
+      scene.add(piling);
+    }
+
+    // ─── PATHS ────────────────────────────────────────
+    // Main path from harbor to agora
+    const mainPath = new THREE.Mesh(
+      new THREE.BoxGeometry(8, 0.3, 140), pathMat
+    );
+    mainPath.position.set(-10, 7, -60);
+    mainPath.receiveShadow = true;
+    scene.add(mainPath);
+
+    // Path to main temple
+    const templePath = new THREE.Mesh(
+      new THREE.BoxGeometry(12, 0.3, 80), pathMat
+    );
+    templePath.position.set(0, 16, 80);
+    templePath.rotation.x = 0.12;
+    templePath.receiveShadow = true;
+    scene.add(templePath);
+
+    // ─── DECORATIVE TREES (cypress) ───────────────────
+    const cypressGeo = new THREE.ConeGeometry(2.5, 18, 6);
+    const cypressMat = new THREE.MeshStandardMaterial({ color: 0x1a3a1a });
+    const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4, 5);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x553311 });
+
+    const cypressGroup = new THREE.InstancedMesh(cypressGeo, cypressMat, 200);
+    const cypressTrunkGroup = new THREE.InstancedMesh(trunkGeo, trunkMat, 200);
+    const dummy = new THREE.Object3D();
+    let treeIdx = 0;
+
+    for (let i = 0; i < 500 && treeIdx < 200; i++) {
+      const x = (Math.random() - 0.5) * 700;
+      const z = (Math.random() - 0.5) * 700;
+      // Get terrain height at this point
+      const gridX = ((x / terrainSize) + 0.5) * terrainRes;
+      const gridZ = ((z / terrainSize) + 0.5) * terrainRes;
+      // Approximate height
+      let y = Math.max(0, (z + 200) * 0.15);
+      y += Math.sin(x * 0.01) * Math.cos(z * 0.008) * 20;
+      y += Math.sin(x * 0.025 + 1) * Math.cos(z * 0.02 + 2) * 8;
+      const cityDist = Math.sqrt(x * x + (z - 50) * (z - 50));
+      if (cityDist < 180) {
+        const flatten = Math.max(0, 1 - cityDist / 180);
+        y = y * (1 - flatten * 0.6) + 10 * flatten;
+      }
+      if (z < -100) y *= Math.max(0, (z + 250) / 150);
+
+      // Don't place in water, on buildings, or too close to center
+      if (y > 3 && (cityDist > 80 || Math.random() < 0.15)) {
+        const scale = 0.6 + Math.random() * 0.6;
+        dummy.position.set(x, y + 9 * scale, z);
+        dummy.scale.set(scale, scale, scale);
+        dummy.rotation.y = Math.random() * Math.PI * 2;
+        dummy.updateMatrix();
+        cypressGroup.setMatrixAt(treeIdx, dummy.matrix);
+
+        dummy.position.set(x, y + 2 * scale, z);
+        dummy.updateMatrix();
+        cypressTrunkGroup.setMatrixAt(treeIdx, dummy.matrix);
+        treeIdx++;
+      }
+    }
+    cypressGroup.count = treeIdx;
+    cypressTrunkGroup.count = treeIdx;
+    cypressGroup.castShadow = true;
+    scene.add(cypressGroup);
+    scene.add(cypressTrunkGroup);
+
+    // ─── CAMERA FLY PATH ──────────────────────────────
+    const flyPoints = [
+      new THREE.Vector3(-150, 25, -200),  // harbor approach
+      new THREE.Vector3(-80, 20, -130),   // along coast
+      new THREE.Vector3(-40, 18, -80),    // dock view
+      new THREE.Vector3(-20, 22, -20),    // entering agora
+      new THREE.Vector3(0, 25, 30),       // through marketplace
+      new THREE.Vector3(10, 35, 70),      // approaching temple
+      new THREE.Vector3(5, 50, 110),      // temple reveal
+      new THREE.Vector3(-30, 60, 140),    // above temple
+      new THREE.Vector3(-100, 45, 100),   // wide shot
+      new THREE.Vector3(-180, 35, 0),     // coastal panorama
+      new THREE.Vector3(-150, 25, -200),  // back to start
+    ];
+    const flyCurve = new THREE.CatmullRomCurve3(flyPoints, true);
+    let flyT = 0;
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const sunHeightEl = document.getElementById('sunHeight');
+    const sunAngleEl = document.getElementById('sunAngle');
+    const waveScaleEl = document.getElementById('waveScale');
+    const speedEl = document.getElementById('camSpeed');
+    const autoFlyEl = document.getElementById('autoFly');
+
+    updateSun(45, 45);
+
+    // ─── ANIMATION ────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+
+      // Water animation
+      water.material.uniforms['time'].value += dt * (0.3 + (waveScaleEl.value / 100) * 0.7);
+      water.material.uniforms['distortionScale'].value = 1 + (waveScaleEl.value / 100) * 6;
+      water.material.uniforms['sunDirection'].value.copy(sunPos).normalize();
+
+      // Sun
+      updateSun(sunHeightEl.value * 0.7, sunAngleEl.value);
+
+      // Camera
+      if (autoFlyEl.checked) {
+        const speed = 0.00005 + (speedEl.value / 100) * 0.0003;
+        flyT = (flyT + speed) % 1;
+        const pos = flyCurve.getPointAt(flyT);
+        const lookT = (flyT + 0.03) % 1;
+        const lookAt = flyCurve.getPointAt(lookT);
+        camera.position.copy(pos);
+        camera.lookAt(lookAt.x, lookAt.y - 5, lookAt.z);
+      } else {
+        controls.update();
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ─── RESIZE ───────────────────────────────────────
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
