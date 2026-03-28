@@ -52,7 +52,7 @@
     const scene = new THREE.Scene();
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -80,15 +80,29 @@
 
     const sunPos = new THREE.Vector3();
     const pmrem = new THREE.PMREMGenerator(renderer);
+    let envDirty = true;
+    let lastElev = -1, lastAzim = -1;
+    let currentEnvRT = null;
 
     function updateSun(elev, azim) {
       const phi = THREE.MathUtils.degToRad(90 - elev);
       const theta = THREE.MathUtils.degToRad(azim);
       sunPos.setFromSphericalCoords(1, phi, theta);
       skyU['sunPosition'].value.copy(sunPos);
-      const rt = pmrem.fromScene(sky);
-      scene.environment = rt.texture;
       sunLight.position.copy(sunPos).multiplyScalar(500);
+      // Only regenerate env map when sliders actually change (expensive)
+      if (Math.abs(elev - lastElev) > 1 || Math.abs(azim - lastAzim) > 2) {
+        lastElev = elev; lastAzim = azim;
+        envDirty = true;
+      }
+    }
+
+    function updateEnvMap() {
+      if (!envDirty) return;
+      envDirty = false;
+      if (currentEnvRT) currentEnvRT.dispose();
+      currentEnvRT = pmrem.fromScene(sky);
+      scene.environment = currentEnvRT.texture;
     }
 
     // ─── LIGHTING ─────────────────────────────────────
@@ -555,8 +569,9 @@
       water.material.uniforms['distortionScale'].value = 1 + (waveScaleEl.value / 100) * 6;
       water.material.uniforms['sunDirection'].value.copy(sunPos).normalize();
 
-      // Sun
+      // Sun (only updates env map when sliders change)
       updateSun(parseFloat(sunHeightEl.value), parseFloat(sunAngleEl.value));
+      updateEnvMap();
 
       // Camera
       if (autoFlyEl.checked) {
