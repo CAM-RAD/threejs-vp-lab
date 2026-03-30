@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Japan Village — VP Lab</title>
+  <style>
+    *{margin:0}body{background:#0f1a12;overflow:hidden;touch-action:none}canvas{display:block}
+    #ver{position:fixed;top:8px;left:8px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #load{position:fixed;top:0;left:0;right:0;bottom:0;background:#0f1a12;display:flex;align-items:center;justify-content:center;z-index:50;font-family:monospace;color:#88a825;font-size:13px;flex-direction:column;gap:8px;transition:opacity 0.8s}
+    #load span{color:#555;font-size:10px}
+    .gone{opacity:0!important;pointer-events:none!important}
+    #ctrl{position:fixed;bottom:10px;right:10px;z-index:20;background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:6px;font-family:monospace;font-size:9px;color:rgba(255,255,255,0.6);line-height:2.2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:80px;vertical-align:middle}
+  </style>
+</head>
+<body>
+  <div id="ver">v1.0</div>
+  <div id="load">Loading Village...<span id="prog">preparing...</span></div>
+  <div id="ctrl">
+    <label>Mist <input type="range" id="mist" min="0" max="100" value="40"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="40"></label>
+    <label>Time <input type="range" id="tod" min="0" max="100" value="50"></label>
+    <label>Petals <input type="range" id="ptl" min="0" max="100" value="70"></label>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+    const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+    const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const R = new THREE.WebGLRenderer({ antialias: false });
+    R.setSize(W, H); R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 0.8;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2a3a2a);
+    scene.fog = new THREE.FogExp2(0x2a3a2a, 0.012);
+
+    const cam = new THREE.PerspectiveCamera(50, W/H, 0.1, 200);
+    cam.position.set(6, 4, 6);
+
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 1.5, 0);
+    orbit.maxPolarAngle = Math.PI / 1.7;
+    orbit.minDistance = 1;
+    orbit.maxDistance = 35;
+    orbit.enablePan = true;
+    orbit.panSpeed = 0.8;
+    orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+    // Bloom
+    const composer = new EffectComposer(R);
+    composer.addPass(new RenderPass(scene, cam));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.6, 0.6, 0.4);
+    composer.addPass(bloom);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x334433, 0.6));
+
+    // Warm sun filtering through trees
+    const sun = new THREE.DirectionalLight(0xffeedd, 1.5);
+    sun.position.set(8, 12, 5);
+    scene.add(sun);
+
+    // Cool forest fill
+    const fill = new THREE.DirectionalLight(0x88aacc, 0.4);
+    fill.position.set(-8, 6, -5);
+    scene.add(fill);
+
+    // Warm lantern accents
+    const lan1 = new THREE.PointLight(0xff6622, 2, 8);
+    lan1.position.set(-3, 2, 2);
+    scene.add(lan1);
+    const lan2 = new THREE.PointLight(0xff8833, 1.5, 6);
+    lan2.position.set(3, 2, -2);
+    scene.add(lan2);
+
+    // ─── LOAD MODELS ──────────────────────────────────
+    const loader = new GLTFLoader();
+
+    // DRACO decoder for compressed models (LittlestTokyo uses it)
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/libs/draco/gltf/');
+    loader.setDRACOLoader(dracoLoader);
+
+    const progEl = document.getElementById('prog');
+    let mixer = null;
+
+    // Load LittlestTokyo (the main village scene — 4MB, animated)
+    progEl.textContent = 'loading village...';
+    try {
+      const gltf = await new Promise((resolve, reject) => {
+        loader.load('../../assets/littlest-tokyo.glb',
+          resolve,
+          (xhr) => { progEl.textContent = Math.round(xhr.loaded / xhr.total * 100) + '%'; },
+          reject
+        );
+      });
+      const village = gltf.scene;
+      village.position.set(0, 0, 0);
+      village.scale.set(0.01, 0.01, 0.01); // LittlestTokyo is huge, scale it down
+      scene.add(village);
+
+      // Play built-in animation
+      if (gltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(village);
+        mixer.clipAction(gltf.animations[0]).play();
+      }
+    } catch(e) { console.log('Village load failed:', e); }
+
+    // Load additional temple pieces for depth
+    progEl.textContent = 'loading shrine...';
+    try {
+      const shrine = await new Promise((r, j) => loader.load('../../assets/shrine.glb', r, undefined, j));
+      shrine.scene.position.set(-8, 0, -6);
+      shrine.scene.scale.set(1.5, 1.5, 1.5);
+      shrine.scene.rotation.y = 0.8;
+      scene.add(shrine.scene);
+    } catch(e) {}
+
+    // Lanterns
+    progEl.textContent = 'loading lanterns...';
+    try {
+      const lamp = await new Promise((r, j) => loader.load('../../assets/lamp.glb', r, undefined, j));
+      lamp.scene.position.set(-3, 0, 3);
+      lamp.scene.scale.set(1.5, 1.5, 1.5);
+      scene.add(lamp.scene);
+
+      const lamp2 = lamp.scene.clone();
+      lamp2.position.set(4, 0, -1);
+      lamp2.rotation.y = 1.2;
+      scene.add(lamp2);
+
+      const lamp3 = lamp.scene.clone();
+      lamp3.position.set(-2, 0, -8);
+      lamp3.rotation.y = -0.5;
+      scene.add(lamp3);
+    } catch(e) {}
+
+    // Bell structure
+    progEl.textContent = 'loading details...';
+    try {
+      const bell = await new Promise((r, j) => loader.load('../../assets/bell-structure.glb', r, undefined, j));
+      bell.scene.position.set(7, 0, -5);
+      bell.scene.scale.set(1.2, 1.2, 1.2);
+      bell.scene.rotation.y = -0.6;
+      scene.add(bell.scene);
+    } catch(e) {}
+
+    // ─── FOREST GROUND ────────────────────────────────
+    const groundMat = new THREE.MeshPhongMaterial({ color: 0x1a2a18, shininess: 10 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.02;
+    scene.add(ground);
+
+    // Mossy stone path
+    const pathMat = new THREE.MeshPhongMaterial({ color: 0x2a3528, shininess: 15 });
+    function B(w,h,d,m,x,y,z) { const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); scene.add(o); }
+    B(2, 0.04, 20, pathMat, 0, 0.01, 0);
+
+    // Stepping stones
+    const stoneMat = new THREE.MeshPhongMaterial({ color: 0x3a3a35, shininess: 20 });
+    for (let z = -8; z <= 8; z += 1.5) {
+      const s = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3 + Math.random()*0.15, 0.35 + Math.random()*0.1, 0.06, 6),
+        stoneMat
+      );
+      s.position.set((Math.random()-0.5)*0.8, 0.03, z);
+      scene.add(s);
+    }
+
+    // ─── TREES (simple cone+cylinder, forest surround) ──
+    const treeMat = new THREE.MeshPhongMaterial({ color: 0x1a3a1a, shininess: 10 });
+    const trunkMat = new THREE.MeshPhongMaterial({ color: 0x3a2a1a, shininess: 5 });
+    function C(rt,rb,h,s,m,x,y,z) { const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); o.position.set(x,y,z); scene.add(o); }
+
+    // Ring of trees around the scene
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 12 + Math.random() * 8;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      const h = 5 + Math.random() * 6;
+      const sc = 0.7 + Math.random() * 0.5;
+      // Trunk
+      C(0.15*sc, 0.25*sc, h*0.4, 4, trunkMat, x, h*0.2, z);
+      // Canopy (layered cones for fuller look)
+      C(1.2*sc, 0, h*0.5, 5, treeMat, x, h*0.55, z);
+      C(1*sc, 0, h*0.4, 5, treeMat, x, h*0.7, z);
+    }
+
+    // Cherry blossom trees (pink canopy, closer)
+    const blossomMat = new THREE.MeshPhongMaterial({ color: 0xdd8899, shininess: 15 });
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 + 0.5;
+      const dist = 6 + Math.random() * 3;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      C(0.12, 0.18, 3, 4, trunkMat, x, 1.5, z);
+      // Pink canopy (sphere)
+      const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.8, 6, 5), blossomMat);
+      canopy.position.set(x, 4, z);
+      canopy.scale.set(1, 0.7, 1);
+      scene.add(canopy);
+    }
+
+    // ─── CHERRY BLOSSOM PETALS ────────────────────────
+    const petalCount = 200;
+    const petalGeo = new THREE.BufferGeometry();
+    const pp = new Float32Array(petalCount * 3);
+    const pv = new Float32Array(petalCount * 3);
+    for (let i = 0; i < petalCount; i++) {
+      pp[i*3] = (Math.random() - 0.5) * 30;
+      pp[i*3+1] = Math.random() * 10;
+      pp[i*3+2] = (Math.random() - 0.5) * 30;
+      pv[i*3] = (Math.random() - 0.5) * 0.008;
+      pv[i*3+1] = -(0.003 + Math.random() * 0.008);
+      pv[i*3+2] = (Math.random() - 0.5) * 0.008;
+    }
+    petalGeo.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+    const petals = new THREE.Points(petalGeo, new THREE.PointsMaterial({
+      color: 0xffbbcc, size: 0.1, transparent: true, opacity: 0.8, sizeAttenuation: true,
+    }));
+    scene.add(petals);
+
+    // ─── FIREFLIES ────────────────────────────────────
+    const flyCount = 30;
+    const flyGeo = new THREE.BufferGeometry();
+    const flyPos = new Float32Array(flyCount * 3);
+    for (let i = 0; i < flyCount; i++) {
+      flyPos[i*3] = (Math.random() - 0.5) * 20;
+      flyPos[i*3+1] = 0.5 + Math.random() * 3;
+      flyPos[i*3+2] = (Math.random() - 0.5) * 20;
+    }
+    flyGeo.setAttribute('position', new THREE.BufferAttribute(flyPos, 3));
+    const fireflies = new THREE.Points(flyGeo, new THREE.PointsMaterial({
+      color: 0xccff44, size: 0.08, transparent: true, opacity: 0.7, sizeAttenuation: true,
+    }));
+    scene.add(fireflies);
+
+    // ─── LOADED ───────────────────────────────────────
+    setTimeout(() => document.getElementById('load').classList.add('gone'), 600);
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const mistEl = document.getElementById('mist');
+    const blmEl = document.getElementById('blm');
+    const todEl = document.getElementById('tod');
+    const ptlEl = document.getElementById('ptl');
+
+    // ─── ANIMATE ──────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+
+      // Cherry blossom petals
+      const petalIntensity = ptlEl.value / 100;
+      const pa = petals.geometry.attributes.position;
+      for (let i = 0; i < petalCount; i++) {
+        pa.array[i*3] += pv[i*3] + Math.sin(t * 0.3 + i * 0.2) * 0.004;
+        pa.array[i*3+1] += pv[i*3+1] * petalIntensity;
+        pa.array[i*3+2] += pv[i*3+2] + Math.cos(t * 0.25 + i * 0.15) * 0.003;
+        if (pa.array[i*3+1] < -0.3) {
+          pa.array[i*3] = (Math.random() - 0.5) * 30;
+          pa.array[i*3+1] = 8 + Math.random() * 3;
+          pa.array[i*3+2] = (Math.random() - 0.5) * 30;
+        }
+      }
+      pa.needsUpdate = true;
+      petals.material.opacity = 0.3 + petalIntensity * 0.5;
+
+      // Fireflies
+      const fa = fireflies.geometry.attributes.position;
+      for (let i = 0; i < flyCount; i++) {
+        fa.array[i*3] += Math.sin(t * 0.5 + i * 2) * 0.008;
+        fa.array[i*3+1] += Math.cos(t * 0.3 + i * 1.5) * 0.005;
+        fa.array[i*3+2] += Math.sin(t * 0.4 + i * 1.8) * 0.006;
+      }
+      fa.needsUpdate = true;
+      // Fireflies twinkle
+      fireflies.material.opacity = 0.3 + Math.sin(t * 2) * 0.3;
+
+      // Lantern flicker
+      lan1.intensity = 2 + Math.sin(t * 2.5) * 0.4;
+      lan2.intensity = 1.5 + Math.sin(t * 3 + 1) * 0.3;
+
+      // Controls
+      scene.fog.density = 0.005 + (mistEl.value / 100) * 0.025;
+      bloom.strength = 0.2 + (blmEl.value / 100) * 1.0;
+
+      // Time of day
+      const tod = todEl.value / 100;
+      const bgH = 0.28; // green hue
+      const bgS = 0.2 + tod * 0.1;
+      const bgL = 0.06 + tod * 0.15;
+      const bgColor = new THREE.Color().setHSL(bgH, bgS, bgL);
+      scene.background = bgColor;
+      scene.fog.color = bgColor;
+      sun.intensity = 0.5 + tod * 2;
+      R.toneMappingExposure = 0.5 + tod * 0.6;
+
+      if (mixer) mixer.update(dt);
+      orbit.update();
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
