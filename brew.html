@@ -27,7 +27,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v1.7</div>
+  <div id="ver">v1.8</div>
   <div id="splash"><h1>FUNKY BREW</h1><span>Tap below to explore</span></div>
   <div id="panel"><h2 id="pn"></h2><div id="pt"></div><p id="pd"></p></div>
   <div id="nav">
@@ -43,7 +43,7 @@
     // Using exact same pattern as debug.html which WORKED
     const THREE = await import('three');
 
-    const R = new THREE.WebGLRenderer({ antialias: false });
+    const R = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
     R.setSize(window.innerWidth, window.innerHeight);
     R.setPixelRatio(1);
     R.toneMapping = THREE.ACESFilmicToneMapping;
@@ -70,9 +70,9 @@
     bounce.position.set(0, -5, 5);
     scene.add(bounce);
 
-    // Helper — Phong for shinier toy-like look
+    // Helper — Phong with low shininess to avoid shimmer on mobile
     function B(w,h,d,c,x,y,z) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshPhongMaterial({color:c, shininess:40}));
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshPhongMaterial({color:c, shininess:15, specular:0x222222}));
       m.position.set(x,y,z); scene.add(m); return m;
     }
 
@@ -118,7 +118,7 @@
     // ═══ DETAILS ══════════════════════════════════════
     // Helper for cylinders
     function C(rt,rb,h,s,c,x,y,z) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s), new THREE.MeshPhongMaterial({color:c, shininess:50}));
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s), new THREE.MeshPhongMaterial({color:c, shininess:15, specular:0x222222}));
       m.position.set(x,y,z); scene.add(m); return m;
     }
 
