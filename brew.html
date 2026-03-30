@@ -27,7 +27,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v1.5</div>
+  <div id="ver">v1.6</div>
   <div id="splash"><h1>FUNKY BREW</h1><span>Tap below to explore</span></div>
   <div id="panel"><h2 id="pn"></h2><div id="pt"></div><p id="pd"></p></div>
   <div id="nav">
@@ -122,22 +122,22 @@
       m.position.set(x,y,z); scene.add(m); return m;
     }
 
-    // ── WALL TRIM BORDERS (darker edges between color blocks) ──
+    // ── WALL TRIM BORDERS (wider than walls, offset to avoid z-fighting) ──
     // Patio top/bottom trim
-    B(5.1, 0.18, 5.1, 0x85a82e, -2, 3.55, 1.5);      // top
-    B(5.1, 0.18, 5.1, 0x85a82e, -2, 0.02, 1.5);      // bottom
+    B(5.3, 0.22, 5.3, 0x85a82e, -2, 3.58, 1.5);      // top
+    B(5.3, 0.22, 5.3, 0x85a82e, -2, -0.02, 1.5);     // bottom
     // Cafe top/bottom trim
-    B(5.6, 0.18, 6.1, 0xd48a18, -1.5, 7.02, 0.5);    // top
-    B(5.6, 0.18, 6.1, 0xd48a18, -1.5, 3.52, 0.5);    // bottom
+    B(5.8, 0.22, 6.3, 0xd48a18, -1.5, 7.06, 0.5);    // top
+    B(5.8, 0.22, 6.3, 0xd48a18, -1.5, 3.48, 0.5);    // bottom
     // Bakery top/bottom trim
-    B(4.1, 0.18, 4.6, 0xc22e78, 2.2, 7.02, -0.5);    // top
-    B(4.1, 0.18, 4.6, 0xc22e78, 2.2, 3.52, -0.5);    // bottom
+    B(4.3, 0.22, 4.8, 0xc22e78, 2.2, 7.06, -0.5);    // top
+    B(4.3, 0.22, 4.8, 0xc22e78, 2.2, 3.48, -0.5);    // bottom
     // Container 1 trim
-    B(4.1, 0.12, 3.6, 0x1a8a85, 0, 7.52, 0.5);       // bottom
-    B(4.1, 0.12, 3.6, 0x1a8a85, 0, 10.28, 0.5);      // top
+    B(4.3, 0.16, 3.8, 0x1a8a85, 0, 7.48, 0.5);       // bottom
+    B(4.3, 0.16, 3.8, 0x1a8a85, 0, 10.32, 0.5);      // top
     // Container 2 trim
-    B(3.1, 0.12, 2.9, 0x1a8a85, 0.5, 10.32, 0.2);    // bottom
-    B(3.1, 0.12, 2.9, 0x1a8a85, 0.5, 12.48, 0.2);    // top
+    B(3.3, 0.16, 3.1, 0x1a8a85, 0.5, 10.28, 0.2);    // bottom
+    B(3.3, 0.16, 3.1, 0x1a8a85, 0.5, 12.52, 0.2);    // top
 
     // ── WALL PANEL LINES (offset 0.08 from wall surface to avoid z-fighting) ──
     // Patio front wall panels
