@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Samurai Japan — VP Lab</title>
+  <style>
+    *{margin:0}body{background:#0a0812;overflow:hidden;touch-action:none}canvas{display:block}
+    #ver{position:fixed;top:8px;left:8px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #load{position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0812;display:flex;align-items:center;justify-content:center;z-index:50;font-family:monospace;color:#cc4444;font-size:13px;flex-direction:column;gap:8px;transition:opacity 0.8s}
+    #load span{color:#555;font-size:10px}
+    .gone{opacity:0!important;pointer-events:none!important}
+    #ctrl{position:fixed;bottom:10px;right:10px;z-index:20;background:rgba(0,0,0,0.55);padding:8px 12px;border-radius:6px;font-family:monospace;font-size:9px;color:rgba(255,255,255,0.6);line-height:2.2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:80px;vertical-align:middle}
+  </style>
+</head>
+<body>
+  <div id="ver">v1.0</div>
+  <div id="load">Loading Japan...<span id="prog">0%</span></div>
+  <div id="ctrl">
+    <label>Fog <input type="range" id="fog" min="0" max="100" value="30"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="50"></label>
+    <label>Time <input type="range" id="tod" min="0" max="100" value="25"></label>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+    const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+    const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const R = new THREE.WebGLRenderer({ antialias: false });
+    R.setSize(W, H); R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 0.7;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1525);
+    scene.fog = new THREE.FogExp2(0x1a1525, 0.008);
+
+    const cam = new THREE.PerspectiveCamera(50, W/H, 0.1, 200);
+    cam.position.set(8, 5, 8);
+
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 2, 0);
+    orbit.maxPolarAngle = Math.PI / 1.8;
+    orbit.minDistance = 3;
+    orbit.maxDistance = 30;
+
+    // Bloom
+    const composer = new EffectComposer(R);
+    composer.addPass(new RenderPass(scene, cam));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.8, 0.5, 0.3);
+    composer.addPass(bloom);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x221830, 0.5));
+
+    // Warm moonlight
+    const moon = new THREE.DirectionalLight(0xccbbdd, 1.0);
+    moon.position.set(5, 15, 8);
+    scene.add(moon);
+
+    // Red lantern glow
+    const lanternLight1 = new THREE.PointLight(0xff4422, 3, 12);
+    lanternLight1.position.set(-3, 3, 2);
+    scene.add(lanternLight1);
+
+    const lanternLight2 = new THREE.PointLight(0xff6633, 2, 10);
+    lanternLight2.position.set(4, 2.5, -3);
+    scene.add(lanternLight2);
+
+    // Cool accent
+    const coolLight = new THREE.PointLight(0x4466cc, 1.5, 15);
+    coolLight.position.set(-5, 4, -5);
+    scene.add(coolLight);
+
+    // Warm ground bounce
+    const bounceLight = new THREE.PointLight(0x553322, 1, 8);
+    bounceLight.position.set(0, 0.5, 0);
+    scene.add(bounceLight);
+
+    // ─── LOAD MODELS ──────────────────────────────────
+    const loader = new GLTFLoader();
+    const progEl = document.getElementById('prog');
+    let mixer = null;
+    let totalLoaded = 0;
+    const totalModels = 5;
+
+    function updateProgress() {
+      totalLoaded++;
+      progEl.textContent = Math.round((totalLoaded / totalModels) * 100) + '%';
+      if (totalLoaded >= totalModels) {
+        setTimeout(() => document.getElementById('load').classList.add('gone'), 500);
+      }
+    }
+
+    function loadModel(url, pos, scale, rotY = 0) {
+      return new Promise((resolve) => {
+        loader.load(url, (gltf) => {
+          const model = gltf.scene;
+          model.position.set(pos.x, pos.y, pos.z);
+          model.scale.set(scale, scale, scale);
+          model.rotation.y = rotY;
+          scene.add(model);
+          updateProgress();
+          resolve({ scene: model, animations: gltf.animations });
+        }, undefined, () => { updateProgress(); resolve(null); });
+      });
+    }
+
+    // Load temple pieces
+    await loadModel('../../assets/shrine.glb', {x: 0, y: 0, z: -5}, 2, 0);
+    await loadModel('../../assets/entrance-stairs.glb', {x: 0, y: 0, z: 0}, 2, 0);
+    await loadModel('../../assets/lamp.glb', {x: -4, y: 0, z: 1}, 2, 0.3);
+    await loadModel('../../assets/lamp.glb', {x: 4, y: 0, z: 1}, 2, -0.3);
+
+    // Dragon as hero piece
+    const dragonResult = await loadModel('../../assets/dragon.glb', {x: 2, y: 2, z: -4}, 1.5, -0.8);
+
+    // ─── GROUND ───────────────────────────────────────
+    const groundMat = new THREE.MeshPhongMaterial({ color: 0x151218, shininess: 30, specular: 0x222233 });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01;
+    scene.add(ground);
+
+    // Stone path
+    const pathMat = new THREE.MeshPhongMaterial({ color: 0x2a2530, shininess: 20 });
+    const path = new THREE.Mesh(new THREE.BoxGeometry(3, 0.05, 15), pathMat);
+    path.position.set(0, 0, 3);
+    scene.add(path);
+
+    // ─── PARTICLES — CHERRY BLOSSOM PETALS ────────────
+    const petalCount = 150;
+    const petalGeo = new THREE.BufferGeometry();
+    const petalPos = new Float32Array(petalCount * 3);
+    const petalVel = new Float32Array(petalCount * 3); // x, y, z velocity
+    for (let i = 0; i < petalCount; i++) {
+      petalPos[i*3] = (Math.random() - 0.5) * 25;
+      petalPos[i*3+1] = Math.random() * 12;
+      petalPos[i*3+2] = (Math.random() - 0.5) * 25;
+      petalVel[i*3] = (Math.random() - 0.5) * 0.01;   // x drift
+      petalVel[i*3+1] = -(0.005 + Math.random() * 0.01); // fall speed
+      petalVel[i*3+2] = (Math.random() - 0.5) * 0.01;   // z drift
+    }
+    petalGeo.setAttribute('position', new THREE.BufferAttribute(petalPos, 3));
+    const petals = new THREE.Points(petalGeo, new THREE.PointsMaterial({
+      color: 0xffaacc, size: 0.12, transparent: true, opacity: 0.7, sizeAttenuation: true,
+    }));
+    scene.add(petals);
+
+    // ─── MIST ─────────────────────────────────────────
+    const mistCount = 20;
+    const mistGeo = new THREE.BufferGeometry();
+    const mistPos = new Float32Array(mistCount * 3);
+    for (let i = 0; i < mistCount; i++) {
+      mistPos[i*3] = (Math.random() - 0.5) * 20;
+      mistPos[i*3+1] = 0.3 + Math.random() * 2;
+      mistPos[i*3+2] = (Math.random() - 0.5) * 20;
+    }
+    mistGeo.setAttribute('position', new THREE.BufferAttribute(mistPos, 3));
+    scene.add(new THREE.Points(mistGeo, new THREE.PointsMaterial({
+      color: 0x332244, size: 1.2, transparent: true, opacity: 0.08, sizeAttenuation: true,
+    })));
+
+    // ─── RED LANTERN GLOW SPHERES ─────────────────────
+    const glowMat = new THREE.MeshPhongMaterial({ color: 0x000, emissive: 0xff3322, emissiveIntensity: 2 });
+    const glow1 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 5, 4), glowMat);
+    glow1.position.set(-4, 2.5, 1); scene.add(glow1);
+    const glow2 = new THREE.Mesh(new THREE.SphereGeometry(0.15, 5, 4), glowMat);
+    glow2.position.set(4, 2.5, 1); scene.add(glow2);
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const fogEl = document.getElementById('fog');
+    const blmEl = document.getElementById('blm');
+    const todEl = document.getElementById('tod');
+
+    // ─── ANIMATE ──────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+
+      // Cherry blossom petals
+      const pp = petals.geometry.attributes.position;
+      for (let i = 0; i < petalCount; i++) {
+        pp.array[i*3] += petalVel[i*3] + Math.sin(t * 0.5 + i) * 0.003;
+        pp.array[i*3+1] += petalVel[i*3+1];
+        pp.array[i*3+2] += petalVel[i*3+2] + Math.cos(t * 0.3 + i * 0.5) * 0.002;
+        // Reset when fallen
+        if (pp.array[i*3+1] < -0.5) {
+          pp.array[i*3] = (Math.random() - 0.5) * 25;
+          pp.array[i*3+1] = 10 + Math.random() * 3;
+          pp.array[i*3+2] = (Math.random() - 0.5) * 25;
+        }
+      }
+      pp.needsUpdate = true;
+
+      // Lantern flicker
+      lanternLight1.intensity = 3 + Math.sin(t * 2.5) * 0.5 + Math.sin(t * 7) * 0.2;
+      lanternLight2.intensity = 2 + Math.sin(t * 3 + 1) * 0.4;
+      glowMat.emissiveIntensity = 2 + Math.sin(t * 2) * 0.3;
+
+      // Controls
+      scene.fog.density = 0.003 + (fogEl.value / 100) * 0.015;
+      bloom.strength = 0.3 + (blmEl.value / 100) * 1.2;
+
+      // Time of day
+      const tod = todEl.value / 100;
+      const bgColor = new THREE.Color().setHSL(0.72, 0.25, 0.05 + tod * 0.12);
+      scene.background = bgColor;
+      scene.fog.color = bgColor;
+      moon.intensity = 0.5 + tod * 1.5;
+      R.toneMappingExposure = 0.5 + tod * 0.5;
+
+      if (mixer) mixer.update(dt);
+      orbit.update();
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
