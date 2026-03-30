@@ -27,7 +27,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v1.4</div>
+  <div id="ver">v1.5</div>
   <div id="splash"><h1>FUNKY BREW</h1><span>Tap below to explore</span></div>
   <div id="panel"><h2 id="pn"></h2><div id="pt"></div><p id="pd"></p></div>
   <div id="nav">
@@ -139,16 +139,16 @@
     B(3.1, 0.12, 2.9, 0x1a8a85, 0.5, 10.32, 0.2);    // bottom
     B(3.1, 0.12, 2.9, 0x1a8a85, 0.5, 12.48, 0.2);    // top
 
-    // ── WALL PANEL LINES (subtle grooves on walls) ──
+    // ── WALL PANEL LINES (offset 0.08 from wall surface to avoid z-fighting) ──
     // Patio front wall panels
-    B(5.02, 0.04, 0.02, 0x8fb830, -2, 1.2, -1.01);
-    B(5.02, 0.04, 0.02, 0x8fb830, -2, 2.4, -1.01);
+    B(5.02, 0.06, 0.06, 0x8fb830, -2, 1.2, -1.08);
+    B(5.02, 0.06, 0.06, 0x8fb830, -2, 2.4, -1.08);
     // Cafe front wall panels
-    B(5.52, 0.04, 0.02, 0xdba020, -1.5, 4.2, -2.5);
-    B(5.52, 0.04, 0.02, 0xdba020, -1.5, 5.8, -2.5);
+    B(5.52, 0.06, 0.06, 0xdba020, -1.5, 4.2, -2.58);
+    B(5.52, 0.06, 0.06, 0xdba020, -1.5, 5.8, -2.58);
     // Bakery front wall panels
-    B(4.02, 0.04, 0.02, 0xd03880, 2.2, 4.5, -2.76);
-    B(4.02, 0.04, 0.02, 0xd03880, 2.2, 6.0, -2.76);
+    B(4.02, 0.06, 0.06, 0xd03880, 2.2, 4.5, -2.84);
+    B(4.02, 0.06, 0.06, 0xd03880, 2.2, 6.0, -2.84);
 
     // Bar stools on patio
     C(0.06,0.06,0.7,4,0xcccccc, 1.5,0.43,3.2);       // stool leg
