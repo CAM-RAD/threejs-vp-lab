@@ -20,7 +20,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v2.2</div>
+  <div id="ver">v2.3</div>
   <div id="load">Feudal Japan<span id="prog">starting...</span><div id="bar"><div id="fill"></div></div><div id="status"></div></div>
   <div id="ctrl">
     <label>Mist <input type="range" id="mist" min="0" max="100" value="35"></label>
@@ -31,12 +31,14 @@
   {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
   </script>
   <script type="module">
+    const statusEl = document.getElementById('status');
+    try { statusEl.textContent = 'importing three.js...'; } catch(e) {}
     const THREE = await import('three');
+    try { statusEl.textContent = 'importing controls...'; } catch(e) {}
     const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
-    const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
-    const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
-    const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+    try { statusEl.textContent = 'importing loader...'; } catch(e) {}
     const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    try { statusEl.textContent = 'imports done'; } catch(e) {}
 
     const W = window.innerWidth, H = window.innerHeight;
     const R = new THREE.WebGLRenderer({ antialias: false });
@@ -62,10 +64,7 @@
     orbit.panSpeed = 0.8;
     orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-    const composer = new EffectComposer(R);
-    composer.addPass(new RenderPass(scene, cam));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.4, 0.5, 0.5);
-    composer.addPass(bloom);
+    // No bloom — direct render for mobile reliability
 
     // ─── LIGHTS ───────────────────────────────────────
     scene.add(new THREE.AmbientLight(0x556655, 0.55));
@@ -369,7 +368,7 @@
 
       // Controls
       scene.fog.density = 0.002+(mistEl.value/100)*0.015;
-      bloom.strength = 0.15+(blmEl.value/100)*0.7;
+      // bloom removed for mobile
       const tod = todEl.value/100;
       const bg = new THREE.Color().setHSL(0.3, 0.12+tod*0.15, 0.12+tod*0.2);
       scene.background = bg; scene.fog.color = bg;
@@ -377,7 +376,7 @@
       R.toneMappingExposure = 0.5+tod*0.5;
 
       orbit.update();
-      composer.render();
+      R.render(scene, cam);
     }
     animate();
 
