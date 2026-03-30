@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Feudal Japan — VP Lab</title>
+  <style>
+    *{margin:0}body{background:#1a2218;overflow:hidden;touch-action:none}canvas{display:block}
+    #ver{position:fixed;top:8px;left:8px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #load{position:fixed;top:0;left:0;right:0;bottom:0;background:#1a2218;display:flex;align-items:center;justify-content:center;z-index:50;font-family:monospace;color:#cc7744;font-size:13px;flex-direction:column;gap:10px;transition:opacity 1s}
+    #load span{color:#888;font-size:10px}
+    #bar{width:200px;height:4px;background:#333;border-radius:2px;overflow:hidden}
+    #bar div{height:100%;background:#cc7744;width:0%;transition:width 0.3s}
+    #status{color:#666;font-size:9px;max-width:250px;text-align:center;line-height:1.6}
+    .gone{opacity:0!important;pointer-events:none!important}
+    #ctrl{position:fixed;bottom:8px;right:8px;z-index:20;background:rgba(0,0,0,0.5);padding:8px 10px;border-radius:6px;font-family:monospace;font-size:9px;color:rgba(255,255,255,0.55);line-height:2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:75px;vertical-align:middle}
+  </style>
+</head>
+<body>
+  <div id="ver">v2.3</div>
+  <div id="load">Feudal Japan<span id="prog">starting...</span><div id="bar"><div id="fill"></div></div><div id="status"></div></div>
+  <div id="ctrl">
+    <label>Mist <input type="range" id="mist" min="0" max="100" value="35"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="35"></label>
+    <label>Time <input type="range" id="tod" min="0" max="100" value="55"></label>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    const statusEl = document.getElementById('status');
+    try { statusEl.textContent = 'importing three.js...'; } catch(e) {}
+    const THREE = await import('three');
+    try { statusEl.textContent = 'importing controls...'; } catch(e) {}
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    try { statusEl.textContent = 'importing loader...'; } catch(e) {}
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    try { statusEl.textContent = 'imports done'; } catch(e) {}
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const R = new THREE.WebGLRenderer({ antialias: false });
+    R.setSize(W, H); R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 0.85;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x5a7a5a);
+    scene.fog = new THREE.FogExp2(0x5a7a5a, 0.006);
+
+    const cam = new THREE.PerspectiveCamera(50, W/H, 0.1, 300);
+    cam.position.set(18, 12, 22);
+
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 1, 0);
+    orbit.maxPolarAngle = Math.PI / 1.8;
+    orbit.minDistance = 2;
+    orbit.maxDistance = 50;
+    orbit.enablePan = true;
+    orbit.panSpeed = 0.8;
+    orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+    // No bloom — direct render for mobile reliability
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x556655, 0.55));
+    const sun = new THREE.DirectionalLight(0xffeedd, 1.8);
+    sun.position.set(12, 18, 8); scene.add(sun);
+    scene.add(Object.assign(new THREE.DirectionalLight(0x88aacc, 0.4), { position: new THREE.Vector3(-10, 8, -6) }));
+
+    // Warm lantern lights
+    const lans = [];
+    function addLan(x, y, z) {
+      const l = new THREE.PointLight(0xff6622, 2, 8);
+      l.position.set(x, y, z); scene.add(l); lans.push(l);
+    }
+    addLan(-4, 2.5, 3); addLan(5, 2.5, -2); addLan(-8, 2.5, -6);
+    addLan(9, 2.5, 6); addLan(0, 2.5, -10); addLan(-3, 2.5, 10);
+
+    // ─── TERRAIN ──────────────────────────────────────
+    const tGeo = new THREE.PlaneGeometry(100, 100, 50, 50);
+    tGeo.rotateX(-Math.PI / 2);
+    const tp = tGeo.attributes.position;
+    const tc = new Float32Array(tp.count * 3);
+    for (let i = 0; i < tp.count; i++) {
+      const x = tp.getX(i), z = tp.getZ(i);
+      const dist = Math.sqrt(x*x + z*z);
+      let y = 0;
+      if (dist > 18) {
+        const f = (dist - 18) / 25;
+        y = f * f * 10 + Math.sin(x*0.08)*Math.cos(z*0.06)*4*f + Math.sin(x*0.15+1)*2*f;
+      }
+      tp.setY(i, y);
+      const g = 0.22 + Math.min(y / 20, 0.25);
+      tc[i*3] = 0.12 + y*0.008;
+      tc[i*3+1] = g;
+      tc[i*3+2] = 0.08 + y*0.004;
+    }
+    tGeo.setAttribute('color', new THREE.BufferAttribute(tc, 3));
+    tGeo.computeVertexNormals();
+    scene.add(new THREE.Mesh(tGeo, new THREE.MeshPhongMaterial({ vertexColors: true, shininess: 5 })));
+
+    // ─── STREETS ──────────────────────────────────────
+    const stMat = new THREE.MeshPhongMaterial({ color: 0x9a8a6a, shininess: 8 });
+    function B(w,h,d,m,x,y,z) { const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); scene.add(o); }
+    function C(rt,rb,h,s,m,x,y,z) { const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); o.position.set(x,y,z); scene.add(o); }
+
+    // Main street
+    B(2.5, 0.04, 28, stMat, 0, 0.02, 0);
+    // Cross streets
+    B(22, 0.04, 2.5, stMat, 0, 0.02, -4);
+    B(18, 0.04, 2.5, stMat, 0, 0.02, 6);
+    // Side paths
+    B(2, 0.04, 10, stMat, -7, 0.02, 2);
+    B(2, 0.04, 10, stMat, 8, 0.02, 0);
+
+    // ─── LOAD 3D ASSETS ───────────────────────────────
+    const loader = new GLTFLoader();
+    const progEl = document.getElementById('prog');
+    const cache = {};
+    let loaded = 0, total = 7;
+
+    const fillEl = document.getElementById('fill');
+    const statusEl = document.getElementById('status');
+
+    async function loadA(name, url) {
+      statusEl.textContent = 'loading ' + name + '...';
+      try {
+        const g = await new Promise((r, j) => {
+          const timeout = setTimeout(() => { j(new Error('timeout')); }, 12000);
+          loader.load(url, (result) => { clearTimeout(timeout); r(result); }, undefined, (err) => { clearTimeout(timeout); j(err); });
+        });
+        cache[name] = g;
+        statusEl.textContent = name + ' OK';
+      } catch(e) {
+        statusEl.textContent = name + ' SKIPPED';
+      }
+      loaded++;
+      const pct = Math.round(loaded/total*100);
+      progEl.textContent = pct + '%';
+      fillEl.style.width = pct + '%';
+    }
+
+    function place(name, x, y, z, s, ry=0) {
+      if (!cache[name]) return;
+      const m = cache[name].scene.clone();
+      m.position.set(x, y, z); m.scale.set(s, s, s); m.rotation.y = ry;
+      scene.add(m); return m;
+    }
+
+    // Load unique assets (7 — keep download manageable)
+    await loadA('building', '../../assets/building-base.glb');
+    await loadA('wall', '../../assets/room-wall.glb');
+    await loadA('roof', '../../assets/room-roof.glb');
+    await loadA('door', '../../assets/room-door.glb');
+    await loadA('fence', '../../assets/fence1.glb');
+    await loadA('lamp', '../../assets/lamp.glb');
+    await loadA('shrine', '../../assets/shrine.glb');
+
+    // ─── VILLAGE LAYOUT ───────────────────────────────
+    // === LEFT SIDE OF MAIN STREET ===
+
+    // House row 1 (left of main street, facing right)
+    place('building', -4, 0, -2, 1.3, 0);
+    place('wall', -4, 0, -2, 1.3, 0);
+    place('roof', -4, 0, -2, 1.3, 0);
+    place('door', -4, 0, -2, 1.3, 0);
+
+    // House 2
+    place('building', -5, 0, 3, 1.2, 0.3);
+    place('wall', -5, 0, 3, 1.2, 0.3);
+    place('roof', -5, 0, 3, 1.2, 0.3);
+
+    // House 3
+    place('building', -4, 0, 8, 1.4, -0.2);
+    place('wall', -4, 0, 8, 1.4, -0.2);
+    place('roof', -4, 0, 8, 1.4, -0.2);
+    place('door', -4, 0, 8, 1.4, -0.2);
+
+    // House 4 (set back)
+    place('building', -8, 0, 0, 1.1, 0.5);
+    place('wall', -8, 0, 0, 1.1, 0.5);
+    place('roof', -8, 0, 0, 1.1, 0.5);
+
+    // House 5
+    place('building', -8, 0, 6, 1.3, 0.8);
+    place('roof', -8, 0, 6, 1.3, 0.8);
+
+    // === RIGHT SIDE OF MAIN STREET ===
+
+    // House 6
+    place('building', 5, 0, -1, 1.3, Math.PI);
+    place('wall', 5, 0, -1, 1.3, Math.PI);
+    place('roof', 5, 0, -1, 1.3, Math.PI);
+    place('door', 5, 0, -1, 1.3, Math.PI);
+
+    // House 7
+    place('building', 5, 0, 4, 1.2, Math.PI + 0.2);
+    place('wall', 5, 0, 4, 1.2, Math.PI + 0.2);
+    place('roof', 5, 0, 4, 1.2, Math.PI + 0.2);
+
+    // House 8
+    place('building', 6, 0, 9, 1.1, Math.PI - 0.3);
+    place('roof', 6, 0, 9, 1.1, Math.PI - 0.3);
+    place('door', 6, 0, 9, 1.1, Math.PI - 0.3);
+
+    // House 9 (far right)
+    place('building', 9, 0, 2, 1.2, Math.PI + 0.5);
+    place('wall', 9, 0, 2, 1.2, Math.PI + 0.5);
+    place('roof', 9, 0, 2, 1.2, Math.PI + 0.5);
+
+    // House 10 (along cross street)
+    place('building', -6, 0, -6, 1.15, 1.5);
+    place('roof', -6, 0, -6, 1.15, 1.5);
+
+    place('building', 7, 0, -6, 1.25, -1.5);
+    place('wall', 7, 0, -6, 1.25, -1.5);
+    place('roof', 7, 0, -6, 1.25, -1.5);
+
+    // === SHRINE at end of main street ===
+    place('shrine', 0, 0, -12, 2, 0);
+
+    // === FENCES along edges ===
+    place('fence', -3, 0, -8, 1.2, 0);
+    place('fence', 3, 0, -8, 1.2, 0);
+    place('fence', -10, 0, -3, 1.2, Math.PI/2);
+    place('fence', 10, 0, -3, 1.2, Math.PI/2);
+    place('fence', -10, 0, 5, 1.2, Math.PI/2);
+    place('fence', 10, 0, 5, 1.2, Math.PI/2);
+
+    // === LANTERNS along streets ===
+    const lampSpots = [
+      [-2,0,1], [2,0,1], [-2,0,5], [2,0,5], [-2,0,-3], [2,0,-3],
+      [-2,0,9], [2,0,9], [-6,0,-4], [6,0,-4], [-6,0,6], [8,0,6],
+      [0,0,-9],
+    ];
+    lampSpots.forEach(([x,y,z]) => place('lamp', x, y, z, 1.2, Math.random()*6.28));
+
+    // ─── FOREST TREES ─────────────────────────────────
+    const treeMat = new THREE.MeshPhongMaterial({ color: 0x1a3a1a, shininess: 8 });
+    const treeMatB = new THREE.MeshPhongMaterial({ color: 0x224422, shininess: 8 });
+    const trunkMat = new THREE.MeshPhongMaterial({ color: 0x3a2a1a, shininess: 5 });
+    const blossomMat = new THREE.MeshPhongMaterial({ color: 0xdd8899, shininess: 12 });
+
+    for (let i = 0; i < 45; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 20 + Math.random() * 25;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      const f = Math.max(0, (d - 18) / 25);
+      let y = f * f * 10 + Math.sin(x*0.08)*Math.cos(z*0.06)*4*f;
+      const h = 4 + Math.random() * 5;
+      const sc = 0.6 + Math.random() * 0.5;
+      C(0.12*sc, 0.2*sc, h*0.4, 4, trunkMat, x, y+h*0.2, z);
+      C(1.4*sc, 0, h*0.45, 5, Math.random()>0.3 ? treeMat : treeMatB, x, y+h*0.55, z);
+      C(1.1*sc, 0, h*0.35, 5, treeMat, x, y+h*0.72, z);
+    }
+
+    // Cherry blossoms near town edge
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2 + Math.random()*0.4;
+      const d = 14 + Math.random()*4;
+      const x = Math.cos(a)*d, z = Math.sin(a)*d;
+      C(0.1, 0.15, 2.5, 4, trunkMat, x, 1.25, z);
+      const c = new THREE.Mesh(new THREE.SphereGeometry(1.8, 6, 5), blossomMat);
+      c.position.set(x, 3.5, z); c.scale.set(1, 0.7, 1); scene.add(c);
+    }
+
+    // ─── MOUNTAINS ────────────────────────────────────
+    const mtnMat = new THREE.MeshPhongMaterial({ color: 0x3a5a3a, shininess: 5 });
+    const mtnSnow = new THREE.MeshPhongMaterial({ color: 0xddeedd, shininess: 10 });
+    for (let i = 0; i < 8; i++) {
+      const a = (i/8)*Math.PI*2 + Math.random()*0.5;
+      const d = 50 + Math.random()*15;
+      const x = Math.cos(a)*d, z = Math.sin(a)*d;
+      const mh = 15 + Math.random()*20;
+      const mw = 10 + Math.random()*12;
+      C(mw, 0, mh, 4, mtnMat, x, mh*0.35, z);
+      if (mh > 22) C(mw*0.3, 0, mh*0.18, 4, mtnSnow, x, mh*0.65, z);
+    }
+
+    // ─── STREAM ───────────────────────────────────────
+    const waterMat = new THREE.MeshPhongMaterial({ color: 0x2a5a6a, shininess: 80, specular: 0x446688, transparent: true, opacity: 0.65 });
+    B(1.8, 0.02, 40, waterMat, 13, 0.03, 0);
+    // Bridge
+    const bridgeMat = new THREE.MeshPhongMaterial({ color: 0x6a3a1a, shininess: 15 });
+    B(3.5, 0.15, 2, bridgeMat, 13, 0.4, -4);
+    B(0.08, 0.5, 2, bridgeMat, 11.5, 0.65, -4);
+    B(0.08, 0.5, 2, bridgeMat, 14.5, 0.65, -4);
+
+    // ─── PETALS ───────────────────────────────────────
+    const pCount = 200;
+    const pGeo = new THREE.BufferGeometry();
+    const pPos = new Float32Array(pCount * 3);
+    const pVel = new Float32Array(pCount * 3);
+    for (let i = 0; i < pCount; i++) {
+      pPos[i*3] = (Math.random()-0.5)*40;
+      pPos[i*3+1] = Math.random()*12;
+      pPos[i*3+2] = (Math.random()-0.5)*40;
+      pVel[i*3] = (Math.random()-0.5)*0.006;
+      pVel[i*3+1] = -(0.002+Math.random()*0.005);
+      pVel[i*3+2] = (Math.random()-0.5)*0.006;
+    }
+    pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+    const petals = new THREE.Points(pGeo, new THREE.PointsMaterial({
+      color: 0xffbbcc, size: 0.1, transparent: true, opacity: 0.7, sizeAttenuation: true,
+    }));
+    scene.add(petals);
+
+    // Fireflies
+    const fCount = 20;
+    const fGeo = new THREE.BufferGeometry();
+    const fPos = new Float32Array(fCount * 3);
+    for (let i = 0; i < fCount; i++) {
+      fPos[i*3] = (Math.random()-0.5)*25;
+      fPos[i*3+1] = 0.5+Math.random()*3;
+      fPos[i*3+2] = (Math.random()-0.5)*25;
+    }
+    fGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+    const flies = new THREE.Points(fGeo, new THREE.PointsMaterial({
+      color: 0xccff44, size: 0.06, transparent: true, opacity: 0.6, sizeAttenuation: true,
+    }));
+    scene.add(flies);
+
+    // ─── DONE LOADING ─────────────────────────────────
+    progEl.textContent = 'ready!';
+    document.getElementById('load').classList.add('gone');
+
+    // ─── ANIMATE ──────────────────────────────────────
+    const mistEl = document.getElementById('mist');
+    const blmEl = document.getElementById('blm');
+    const todEl = document.getElementById('tod');
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Petals
+      const pa = petals.geometry.attributes.position;
+      for (let i = 0; i < pCount; i++) {
+        pa.array[i*3] += pVel[i*3] + Math.sin(t*0.3+i*0.2)*0.003;
+        pa.array[i*3+1] += pVel[i*3+1];
+        pa.array[i*3+2] += pVel[i*3+2] + Math.cos(t*0.25+i*0.15)*0.002;
+        if (pa.array[i*3+1] < -0.3) {
+          pa.array[i*3] = (Math.random()-0.5)*40;
+          pa.array[i*3+1] = 10+Math.random()*4;
+          pa.array[i*3+2] = (Math.random()-0.5)*40;
+        }
+      }
+      pa.needsUpdate = true;
+
+      // Fireflies
+      const fa = flies.geometry.attributes.position;
+      for (let i = 0; i < fCount; i++) {
+        fa.array[i*3] += Math.sin(t*0.4+i*2)*0.005;
+        fa.array[i*3+1] += Math.cos(t*0.3+i*1.5)*0.004;
+        fa.array[i*3+2] += Math.sin(t*0.35+i*1.7)*0.004;
+      }
+      fa.needsUpdate = true;
+      flies.material.opacity = 0.3+Math.sin(t*1.5)*0.25;
+
+      // Lanterns
+      lans.forEach((l,i) => { l.intensity = 2+Math.sin(t*2.5+i*1.3)*0.3; });
+
+      // Controls
+      scene.fog.density = 0.002+(mistEl.value/100)*0.015;
+      // bloom removed for mobile
+      const tod = todEl.value/100;
+      const bg = new THREE.Color().setHSL(0.3, 0.12+tod*0.15, 0.12+tod*0.2);
+      scene.background = bg; scene.fog.color = bg;
+      sun.intensity = 0.5+tod*2;
+      R.toneMappingExposure = 0.5+tod*0.5;
+
+      orbit.update();
+      R.render(scene, cam);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth/window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
