@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Neon Alley v2 — VP Lab</title>
+  <style>
+    *{margin:0}body{background:#050510;overflow:hidden;touch-action:none}canvas{display:block}
+    #ver{position:fixed;top:8px;left:8px;color:rgba(255,255,255,0.2);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #load{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:#88a825;font-family:monospace;font-size:13px;z-index:40;text-align:center}
+    #ctrl{position:fixed;bottom:10px;right:10px;z-index:20;background:rgba(0,0,0,0.5);padding:8px 12px;border-radius:6px;font-family:monospace;font-size:9px;color:rgba(255,255,255,0.6);line-height:2.2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:80px;vertical-align:middle}
+    .gone{display:none!important}
+  </style>
+</head>
+<body>
+  <div id="ver">v2.0</div>
+  <div id="load">Loading scene...</div>
+  <div id="ctrl" class="gone">
+    <label>Fog <input type="range" id="fog" min="0" max="100" value="50"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="60"></label>
+    <label>Rain <input type="range" id="rn" min="0" max="100" value="70"></label>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+    const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+    const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const R = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
+    R.setSize(W, H); R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 0.6;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+    scene.fog = new THREE.FogExp2(0x050510, 0.04);
+
+    const cam = new THREE.PerspectiveCamera(55, W/H, 0.1, 100);
+    cam.position.set(3, 2, 5);
+
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 1.5, 0);
+    orbit.maxPolarAngle = Math.PI / 1.7;
+    orbit.minDistance = 2;
+    orbit.maxDistance = 20;
+
+    // Bloom
+    const composer = new EffectComposer(R);
+    composer.addPass(new RenderPass(scene, cam));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 1.0, 0.5, 0.2);
+    composer.addPass(bloom);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x0a0a20, 0.4));
+
+    // Neon colored lights
+    const lights = [];
+    function NL(c, i, x, y, z, d=8) {
+      const l = new THREE.PointLight(c, i, d);
+      l.position.set(x, y, z); scene.add(l); lights.push(l); return l;
+    }
+    NL(0x00ddff, 4, -2, 3, 0);
+    NL(0xff2288, 4, 2.5, 2.5, -1);
+    NL(0x8833ff, 2.5, -1, 1.5, -4);
+    NL(0xff8822, 2, 3, 2, 3);
+    NL(0x22ff66, 2, -2.5, 3, -6);
+    NL(0xffcc22, 1.5, 0, 4, -2);
+
+    // ─── MATERIALS ────────────────────────────────────
+    function neon(c, i=3) { return new THREE.MeshPhongMaterial({ color: 0x000000, emissive: c, emissiveIntensity: i }); }
+    const mGround = new THREE.MeshPhongMaterial({ color: 0x0a0a15, shininess: 100, specular: 0x446688 });
+    const mWall = new THREE.MeshPhongMaterial({ color: 0x15151f, shininess: 8 });
+    const mBrick = new THREE.MeshPhongMaterial({ color: 0x1a1518, shininess: 5 });
+    const mMetal = new THREE.MeshPhongMaterial({ color: 0x252530, shininess: 50, specular: 0x555566 });
+    const mDoor = new THREE.MeshPhongMaterial({ color: 0x0f0f15, shininess: 15 });
+    const mWinLit = new THREE.MeshPhongMaterial({ color: 0x000, emissive: 0x553820, emissiveIntensity: 0.5 });
+    const mWinDark = new THREE.MeshPhongMaterial({ color: 0x111520, shininess: 30, specular: 0x334455, transparent: true, opacity: 0.5 });
+    const mPuddle = new THREE.MeshPhongMaterial({ color: 0x080812, shininess: 150, specular: 0x8899bb, transparent: true, opacity: 0.6 });
+
+    function B(w,h,d,m,x,y,z) { const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); scene.add(o); }
+    function C(rt,rb,h,s,m,x,y,z) { const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); o.position.set(x,y,z); scene.add(o); }
+
+    // ─── WET GROUND ───────────────────────────────────
+    B(6, 0.02, 30, mGround, 0, 0, -5);
+    // Puddles
+    B(1.5, 0.01, 2, mPuddle, -0.8, 0.02, 1);
+    B(1, 0.01, 1.5, mPuddle, 1.2, 0.02, -3);
+    B(2, 0.01, 1.2, mPuddle, 0, 0.02, -7);
+
+    // Neon reflections on ground
+    B(1.2, 0.005, 2, neon(0x00ddff, 0.5), -1.5, 0.015, 0);
+    B(0.8, 0.005, 1.8, neon(0xff2288, 0.4), 1.8, 0.015, -1);
+    B(1, 0.005, 1.5, neon(0x8833ff, 0.3), -0.5, 0.015, -4);
+    B(0.7, 0.005, 1.5, neon(0x22ff66, 0.25), -1.5, 0.015, -6);
+
+    // ─── LEFT BUILDINGS ───────────────────────────────
+    B(0.3, 8, 5, mWall, -3, 4, 0);
+    B(0.3, 10, 6, mBrick, -3, 5, -6);
+    B(0.3, 7, 4, mWall, -3, 3.5, 5);
+    B(0.3, 12, 5, mWall, -3, 6, -12);
+
+    // Left windows
+    for (let z = -1.5; z <= 2; z += 1.2) {
+      for (let y = 2; y <= 6; y += 1.5) {
+        B(0.04, 0.6, 0.5, Math.random() > 0.5 ? mWinLit : mWinDark, -2.84, y, z);
+      }
+    }
+    for (let z = -8; z <= -4; z += 1.2) {
+      for (let y = 2; y <= 7; y += 1.5) {
+        B(0.04, 0.6, 0.5, Math.random() > 0.6 ? mWinLit : mWinDark, -2.84, y, z);
+      }
+    }
+
+    // ─── RIGHT BUILDINGS ──────────────────────────────
+    B(0.3, 9, 5.5, mBrick, 3, 4.5, 0.5);
+    B(0.3, 11, 5, mWall, 3, 5.5, -5.5);
+    B(0.3, 6, 5, mWall, 3, 3, 6);
+    B(0.3, 10, 6, mBrick, 3, 5, -11);
+
+    // Right windows
+    for (let z = -1; z <= 3; z += 1.3) {
+      for (let y = 2; y <= 7; y += 1.5) {
+        B(0.04, 0.6, 0.5, Math.random() > 0.55 ? mWinLit : mWinDark, 2.84, y, z);
+      }
+    }
+    for (let z = -8; z <= -3.5; z += 1.2) {
+      for (let y = 2; y <= 8; y += 1.8) {
+        B(0.04, 0.6, 0.5, Math.random() > 0.6 ? mWinLit : mWinDark, 2.84, y, z);
+      }
+    }
+
+    // ─── NEON SIGNS ───────────────────────────────────
+    // Cyan — horizontal bar (left)
+    B(0.06, 0.12, 1.5, neon(0x00ddff), -2.8, 3.5, 0);
+    B(0.06, 0.12, 1, neon(0x00ddff), -2.8, 3.2, 0.3);
+    // Bracket
+    B(0.4, 0.04, 0.04, mMetal, -2.6, 3.8, -0.5);
+    B(0.4, 0.04, 0.04, mMetal, -2.6, 3.8, 0.8);
+
+    // Pink — vertical sign (right)
+    B(0.06, 2, 0.12, neon(0xff2288), 2.8, 3, -1);
+    B(0.06, 0.12, 0.8, neon(0xff2288), 2.8, 2, -1);
+    B(0.3, 0.04, 0.04, mMetal, 2.65, 4.2, -1);
+
+    // Purple strip (left far)
+    B(0.06, 0.1, 2, neon(0x8833ff), -2.8, 2, -4.5);
+
+    // Green characters (left far back)
+    B(0.06, 0.5, 0.1, neon(0x22ff66), -2.8, 3.2, -6.5);
+    B(0.06, 0.5, 0.1, neon(0x22ff66), -2.8, 3.2, -6.2);
+    B(0.06, 0.1, 0.5, neon(0x22ff66), -2.8, 3.5, -6.35);
+
+    // Orange warm glow (window right)
+    B(0.05, 0.8, 0.6, neon(0xff8822, 1.5), 2.84, 1.5, 4);
+
+    // Red cross (right far)
+    B(0.06, 1, 0.1, neon(0xff2222, 2), 2.8, 4, -7);
+    B(0.06, 0.1, 0.7, neon(0xff2222, 2), 2.8, 4, -7);
+
+    // ─── OVERHEAD WIRES ───────────────────────────────
+    for (let z = -6; z <= 4; z += 3.5) {
+      B(6, 0.015, 0.015, mMetal, 0, 5 + Math.random() * 2, z);
+    }
+
+    // ─── PIPES ────────────────────────────────────────
+    C(0.05, 0.05, 6, 4, mMetal, -2.7, 3, -7);
+    C(0.06, 0.06, 5, 4, mMetal, 2.7, 2.5, 4);
+    B(0.1, 0.1, 2, mMetal, 2.7, 0.5, 3);
+
+    // ─── DOORS ────────────────────────────────────────
+    B(0.05, 1.4, 0.7, mDoor, -2.86, 0.7, 3);
+    B(0.05, 1.6, 0.9, mDoor, 2.86, 0.8, -2);
+
+    // ─── AC UNITS ─────────────────────────────────────
+    B(0.35, 0.5, 0.6, mMetal, -2.65, 1.5, -1.5);
+    B(0.35, 0.5, 0.6, mMetal, 2.65, 2.5, 3.5);
+
+    // ─── CRATES ───────────────────────────────────────
+    B(0.4, 0.4, 0.4, mMetal, -2, 0.2, 4);
+    B(0.3, 0.3, 0.3, mMetal, -1.85, 0.55, 4.05);
+
+    // ─── HANGING LANTERN ──────────────────────────────
+    B(0.015, 0.7, 0.015, mMetal, 0, 4.5, -2);
+    const lanternMat = neon(0xffcc44, 2);
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.08, 5, 4), lanternMat);
+    lantern.position.set(0, 3.9, -2);
+    scene.add(lantern);
+
+    // ─── LOAD 3D MODEL (Sketchfab-style imported scene) ──
+    // Try loading a model from the three.js examples repo
+    const loader = new GLTFLoader();
+
+    // Load the damaged helmet as a centerpiece (it's from the three.js examples CDN — always available)
+    try {
+      const gltf = await new Promise((resolve, reject) => {
+        loader.load(
+          'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf',
+          resolve, undefined, reject
+        );
+      });
+      const helmet = gltf.scene;
+      helmet.position.set(-1.5, 0.6, -1);
+      helmet.scale.set(0.5, 0.5, 0.5);
+      helmet.rotation.y = 0.5;
+      // Make it look like it's sitting on a crate
+      B(0.6, 0.3, 0.6, mMetal, -1.5, 0.15, -1);
+      scene.add(helmet);
+    } catch(e) { /* model load failed — scene still works without it */ }
+
+    // Also load a second model — the soldier
+    try {
+      const gltf2 = await new Promise((resolve, reject) => {
+        loader.load(
+          'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/models/gltf/Soldier.glb',
+          resolve, undefined, reject
+        );
+      });
+      const soldier = gltf2.scene;
+      soldier.position.set(1, 0, 0);
+      soldier.scale.set(1, 1, 1);
+      soldier.rotation.y = -0.8;
+      scene.add(soldier);
+    } catch(e) { /* optional */ }
+
+    // ─── RAIN ─────────────────────────────────────────
+    const rainCount = 500;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPos = new Float32Array(rainCount * 3);
+    const rainVel = new Float32Array(rainCount);
+    for (let i = 0; i < rainCount; i++) {
+      rainPos[i*3] = (Math.random() - 0.5) * 8;
+      rainPos[i*3+1] = Math.random() * 10;
+      rainPos[i*3+2] = (Math.random() - 0.5) * 25;
+      rainVel[i] = 0.08 + Math.random() * 0.1;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+    const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({
+      color: 0x8899cc, size: 0.03, transparent: true, opacity: 0.5, sizeAttenuation: true,
+    }));
+    scene.add(rain);
+
+    // ─── MIST ─────────────────────────────────────────
+    const mistCount = 25;
+    const mistGeo = new THREE.BufferGeometry();
+    const mistPos = new Float32Array(mistCount * 3);
+    for (let i = 0; i < mistCount; i++) {
+      mistPos[i*3] = (Math.random() - 0.5) * 6;
+      mistPos[i*3+1] = 0.2 + Math.random() * 1;
+      mistPos[i*3+2] = (Math.random() - 0.5) * 20;
+    }
+    mistGeo.setAttribute('position', new THREE.BufferAttribute(mistPos, 3));
+    scene.add(new THREE.Points(mistGeo, new THREE.PointsMaterial({
+      color: 0x445566, size: 0.5, transparent: true, opacity: 0.12, sizeAttenuation: true,
+    })));
+
+    // ─── LOADED ───────────────────────────────────────
+    document.getElementById('load').classList.add('gone');
+    document.getElementById('ctrl').classList.remove('gone');
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const fogEl = document.getElementById('fog');
+    const blmEl = document.getElementById('blm');
+    const rnEl = document.getElementById('rn');
+
+    // ─── ANIMATE ──────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Rain
+      const rp = rain.geometry.attributes.position;
+      const rainIntensity = rnEl.value / 100;
+      for (let i = 0; i < rainCount; i++) {
+        rp.array[i*3+1] -= rainVel[i] * rainIntensity;
+        if (rp.array[i*3+1] < 0) {
+          rp.array[i*3+1] = 8 + Math.random() * 2;
+          rp.array[i*3] = (Math.random() - 0.5) * 8;
+          rp.array[i*3+2] = (Math.random() - 0.5) * 25;
+        }
+      }
+      rp.needsUpdate = true;
+      rain.material.opacity = 0.3 + rainIntensity * 0.3;
+
+      // Fog
+      scene.fog.density = 0.01 + (fogEl.value / 100) * 0.06;
+
+      // Bloom
+      bloom.strength = 0.3 + (blmEl.value / 100) * 1.5;
+
+      // Neon flicker
+      lights[0].intensity = 4 + Math.sin(t * 3) * 0.5;
+      lights[1].intensity = 4 + Math.sin(t * 2.3 + 1) * 0.6;
+      lights[4].intensity = 2 + (Math.sin(t * 8) > 0.92 ? 3 : 0); // green flicker
+
+      // Lantern sway
+      lantern.position.x = Math.sin(t * 0.4) * 0.06;
+
+      orbit.update();
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
