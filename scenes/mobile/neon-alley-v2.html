@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v2.0</div>
+  <div id="ver">v2.1</div>
   <div id="load">Loading scene...</div>
   <div id="ctrl" class="gone">
     <label>Fog <input type="range" id="fog" min="0" max="100" value="50"></label>
@@ -201,37 +201,35 @@
     // Try loading a model from the three.js examples repo
     const loader = new GLTFLoader();
 
-    // Load the damaged helmet as a centerpiece (it's from the three.js examples CDN — always available)
+    // Load models from our own repo (same domain = no CORS)
+    let mixer = null;
     try {
       const gltf = await new Promise((resolve, reject) => {
-        loader.load(
-          'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf',
-          resolve, undefined, reject
-        );
+        loader.load('../../assets/DamagedHelmet.glb', resolve, undefined, reject);
       });
       const helmet = gltf.scene;
-      helmet.position.set(-1.5, 0.6, -1);
+      helmet.position.set(-1.5, 0.7, -1);
       helmet.scale.set(0.5, 0.5, 0.5);
       helmet.rotation.y = 0.5;
-      // Make it look like it's sitting on a crate
       B(0.6, 0.3, 0.6, mMetal, -1.5, 0.15, -1);
       scene.add(helmet);
-    } catch(e) { /* model load failed — scene still works without it */ }
+    } catch(e) { console.log('Helmet failed:', e); }
 
-    // Also load a second model — the soldier
     try {
       const gltf2 = await new Promise((resolve, reject) => {
-        loader.load(
-          'https://cdn.jsdelivr.net/npm/three@0.172.0/examples/models/gltf/Soldier.glb',
-          resolve, undefined, reject
-        );
+        loader.load('../../assets/Fox.glb', resolve, undefined, reject);
       });
-      const soldier = gltf2.scene;
-      soldier.position.set(1, 0, 0);
-      soldier.scale.set(1, 1, 1);
-      soldier.rotation.y = -0.8;
-      scene.add(soldier);
-    } catch(e) { /* optional */ }
+      const fox = gltf2.scene;
+      fox.position.set(1.5, 0, 1);
+      fox.scale.set(0.015, 0.015, 0.015);
+      fox.rotation.y = -1.5;
+      scene.add(fox);
+      // Play animation if available
+      if (gltf2.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(fox);
+        mixer.clipAction(gltf2.animations[0]).play();
+      }
+    } catch(e) { console.log('Fox failed:', e); }
 
     // ─── RAIN ─────────────────────────────────────────
     const rainCount = 500;
@@ -279,6 +277,9 @@
     function animate() {
       requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
+
+      // Animate loaded model
+      if (mixer) mixer.update(clock.getDelta());
 
       // Rain
       const rp = rain.geometry.attributes.position;
