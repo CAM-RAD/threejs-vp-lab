@@ -20,7 +20,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v2.6</div>
+  <div id="ver">v2.7</div>
   <div id="load">Feudal Japan<span id="prog">starting...</span><div id="bar"><div id="fill"></div></div><div id="status"></div></div>
   <div id="ctrl">
     <label>Mist <input type="range" id="mist" min="0" max="100" value="35"></label>
@@ -83,7 +83,8 @@
     scene.add(new THREE.AmbientLight(0x556655, 0.55));
     const sun = new THREE.DirectionalLight(0xffeedd, 1.8);
     sun.position.set(12, 18, 8); scene.add(sun);
-    scene.add(Object.assign(new THREE.DirectionalLight(0x88aacc, 0.4), { position: new THREE.Vector3(-10, 8, -6) }));
+    const fill = new THREE.DirectionalLight(0x88aacc, 0.4);
+    fill.position.set(-10, 8, -6); scene.add(fill);
 
     // Warm lantern lights
     const lans = [];
