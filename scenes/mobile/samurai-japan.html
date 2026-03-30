@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v1.0</div>
+  <div id="ver">v1.1</div>
   <div id="load">Loading Japan...<span id="prog">0%</span></div>
   <div id="ctrl">
     <label>Fog <input type="range" id="fog" min="0" max="100" value="30"></label>
@@ -53,8 +53,11 @@
     orbit.enableDamping = true;
     orbit.target.set(0, 2, 0);
     orbit.maxPolarAngle = Math.PI / 1.8;
-    orbit.minDistance = 3;
-    orbit.maxDistance = 30;
+    orbit.minDistance = 1;
+    orbit.maxDistance = 40;
+    orbit.enablePan = true;
+    orbit.panSpeed = 0.8;
+    orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
     // Bloom
     const composer = new EffectComposer(R);
