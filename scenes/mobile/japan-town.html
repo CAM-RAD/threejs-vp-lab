@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div id="ver">v2.0</div>
+  <div id="ver">v2.1</div>
   <div id="load">Feudal Japan<span id="prog">loading assets...</span></div>
   <div id="ctrl">
     <label>Mist <input type="range" id="mist" min="0" max="100" value="35"></label>
@@ -124,9 +124,12 @@
 
     async function loadA(name, url) {
       try {
-        const g = await new Promise((r, j) => loader.load(url, r, undefined, j));
+        const g = await new Promise((r, j) => {
+          const timeout = setTimeout(() => { j(new Error('timeout')); }, 15000);
+          loader.load(url, (result) => { clearTimeout(timeout); r(result); }, undefined, (err) => { clearTimeout(timeout); j(err); });
+        });
         cache[name] = g;
-      } catch(e) {}
+      } catch(e) { console.log('Failed to load ' + name + ':', e); }
       loaded++; progEl.textContent = Math.round(loaded/total*100) + '%';
     }
 
@@ -311,7 +314,8 @@
     scene.add(flies);
 
     // ─── DONE LOADING ─────────────────────────────────
-    setTimeout(() => document.getElementById('load').classList.add('gone'), 800);
+    progEl.textContent = 'ready!';
+    document.getElementById('load').classList.add('gone');
 
     // ─── ANIMATE ──────────────────────────────────────
     const mistEl = document.getElementById('mist');
