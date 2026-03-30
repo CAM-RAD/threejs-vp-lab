@@ -7,41 +7,29 @@
   <title>Funky Brew</title>
   <style>
     *{margin:0}body{background:#f2efe8;overflow:hidden;touch-action:none}canvas{display:block}
-    #nav{position:fixed;bottom:0;left:0;right:0;display:flex;z-index:20;background:rgba(255,255,255,0.92);border-top:2px solid #eee}
-    #nav button{flex:1;padding:14px 4px;border:none;background:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;cursor:pointer;transition:all 0.3s;font-family:sans-serif}
-    #nav button.active{color:#fff}
-    #nav button:nth-child(1).active{background:#2dbcb6}
-    #nav button:nth-child(2).active{background:#f5a623}
-    #nav button:nth-child(3).active{background:#e84393}
-    #nav button:nth-child(4).active{background:#a3cb38}
-    #panel{position:fixed;top:0;left:0;right:0;z-index:15;padding:12px 16px;background:rgba(255,255,255,0.92);transform:translateY(-100%);transition:transform 0.4s;border-bottom:3px solid #eee;font-family:sans-serif}
-    #panel.show{transform:translateY(0)}
-    #panel h2{font-size:16px;margin-bottom:2px}
-    #panel p{font-size:11px;color:#666;line-height:1.4}
-    #panel .tg{display:inline-block;font-size:8px;padding:2px 6px;border-radius:8px;color:#fff;margin-right:3px;font-weight:700}
-    #splash{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:25;text-align:center;pointer-events:none;transition:opacity 0.8s;font-family:sans-serif}
-    #splash h1{font-size:24px;font-weight:900;letter-spacing:0.08em;color:#333}
-    #splash span{font-size:10px;color:#aaa;letter-spacing:0.12em;text-transform:uppercase}
+    #ctrl{position:fixed;bottom:10px;left:10px;right:10px;z-index:20;background:rgba(0,0,0,0.5);padding:10px 14px;border-radius:8px;font-family:monospace;font-size:10px;color:rgba(255,255,255,0.8);line-height:2.2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:calc(100% - 80px);vertical-align:middle}
     #ver{position:fixed;top:10px;left:10px;color:rgba(0,0,0,0.3);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #hint{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);color:rgba(0,0,0,0.25);font-family:sans-serif;font-size:12px;text-align:center;pointer-events:none;transition:opacity 1.5s}
     .gone{opacity:0!important}
   </style>
 </head>
 <body>
-  <div id="ver">v1.8</div>
-  <div id="splash"><h1>FUNKY BREW</h1><span>Tap below to explore</span></div>
-  <div id="panel"><h2 id="pn"></h2><div id="pt"></div><p id="pd"></p></div>
-  <div id="nav">
-    <button onclick="G(0)">Roastery</button>
-    <button onclick="G(1)">Cafe</button>
-    <button onclick="G(2)">Bakery</button>
-    <button onclick="G(3)">Patio</button>
+  <div id="ver">v2.0</div>
+  <div id="hint">Drag to rotate · Pinch to zoom</div>
+  <div id="ctrl">
+    <label>Sun ↔ <input type="range" id="sunX" min="0" max="360" value="45"></label>
+    <label>Sun ↕ <input type="range" id="sunY" min="5" max="80" value="55"></label>
+    <label>Warmth <input type="range" id="warm" min="0" max="100" value="60"></label>
   </div>
   <script type="importmap">
-  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js"}}
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
   </script>
   <script type="module">
     // Using exact same pattern as debug.html which WORKED
     const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
 
     const R = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
     R.setSize(window.innerWidth, window.innerHeight);
@@ -53,6 +41,18 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf2efe8);
     const cam = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 1, 400);
+    cam.position.set(22, 16, 22);
+
+    // Orbit controls — touch to rotate, pinch to zoom
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.dampingFactor = 0.08;
+    orbit.target.set(0, 5, 0);
+    orbit.minDistance = 10;
+    orbit.maxDistance = 60;
+    orbit.maxPolarAngle = Math.PI / 2.1;
+    // Hide hint after first interaction
+    orbit.addEventListener('start', () => { document.getElementById('hint').classList.add('gone'); });
 
     // Lights — warm key, cool fill, rim for depth
     scene.add(new THREE.AmbientLight(0xfff8f0, 0.55));
@@ -244,68 +244,35 @@
     C(0.06, 0.06, 0.3, 3, 0xcccccc, -2.2, 5.15, -0.1);
     C(0.06, 0.06, 0.3, 3, 0xcccccc, -2.2, 5.15, 0.1);
 
-    // ═══ SECTIONS ═════════════════════════════════════
-    const S = [
-      {n:'The Roastery',d:'Small-batch roasting in converted shipping containers. Single-origin beans from Colombia, Ethiopia, and Guatemala.',
-        tg:[{t:'Small Batch',c:'#2dbcb6'},{t:'Single Origin',c:'#1a8a85'}],
-        cx:18,cy:22,cz:16,lx:0,ly:8,lz:0},
-      {n:'The Cafe',d:'Hand-pulled espresso, craft pour-overs, and cold brew on tap. Grab a seat and watch the baristas work.',
-        tg:[{t:'Espresso',c:'#f5a623'},{t:'Pour Over',c:'#d48a18'}],
-        cx:-25,cy:16,cz:20,lx:-1,ly:5,lz:0},
-      {n:'The Bakery',d:'Fresh croissants, sourdough, and cardamom buns every morning. Pairs perfectly with a cortado.',
-        tg:[{t:'Fresh Daily',c:'#e84393'},{t:'Sourdough',c:'#c22e78'}],
-        cx:25,cy:14,cz:-16,lx:2,ly:5,lz:-0.5},
-      {n:'The Patio',d:'Sun, espresso, and people-watching. Pink bar stools, open air, dogs welcome.',
-        tg:[{t:'Outdoor',c:'#a3cb38'},{t:'Dog Friendly',c:'#85a82e'}],
-        cx:25,cy:10,cz:20,lx:2,ly:1,lz:1.5},
-    ];
-
-    let cur = -1;
-    const cT = new THREE.Vector3(30,20,30);
-    const lT = new THREE.Vector3(0,5,0);
-    const cC = cT.clone();
-    const lC = lT.clone();
-
-    const panel = document.getElementById('panel');
-    const splash = document.getElementById('splash');
-    const btns = document.querySelectorAll('#nav button');
-
-    window.G = function(i) {
-      splash.classList.add('gone');
-      cur = i;
-      const s = S[i];
-      cT.set(s.cx,s.cy,s.cz);
-      lT.set(s.lx,s.ly,s.lz);
-      document.getElementById('pn').textContent = s.n;
-      document.getElementById('pd').textContent = s.d;
-      document.getElementById('pt').innerHTML = s.tg.map(t=>`<span class="tg" style="background:${t.c}">${t.t}</span>`).join('');
-      panel.classList.add('show');
-      panel.style.borderBottomColor = ['#2dbcb6','#f5a623','#e84393','#a3cb38'][i];
-      btns.forEach((b,j)=>b.classList.toggle('active',j===i));
-    };
+    // ═══ CONTROLS ══════════════════════════════════════
+    const sunXEl = document.getElementById('sunX');
+    const sunYEl = document.getElementById('sunY');
+    const warmEl = document.getElementById('warm');
 
     // ═══ ANIMATE ══════════════════════════════════════
     function animate() {
       requestAnimationFrame(animate);
-      const t = performance.now() * 0.001;
-      if (cur === -1) {
-        cT.x = Math.sin(t*0.08)*30;
-        cT.z = Math.cos(t*0.08)*30;
-        cT.y = 18+Math.sin(t*0.06)*3;
-        lT.set(0,5,0);
-      }
-      cC.lerp(cT,0.035);
-      lC.lerp(lT,0.035);
-      cam.position.copy(cC);
-      cam.lookAt(lC);
-      R.render(scene,cam);
+
+      // Update sun position from sliders
+      const angle = (sunXEl.value / 360) * Math.PI * 2;
+      const height = sunYEl.value / 80;
+      sun.position.set(Math.cos(angle) * 20, height * 25 + 3, Math.sin(angle) * 20);
+
+      // Warmth — blend between cool and warm light color
+      const w = warmEl.value / 100;
+      sun.color.setRGB(1, 0.9 + w * 0.1, 0.8 + w * 0.15);
+      sun.intensity = 1.5 + w * 1.0;
+      fill.intensity = 0.8 - w * 0.3;
+
+      orbit.update();
+      R.render(scene, cam);
     }
     animate();
 
-    window.addEventListener('resize',()=>{
-      cam.aspect=window.innerWidth/window.innerHeight;
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth / window.innerHeight;
       cam.updateProjectionMatrix();
-      R.setSize(window.innerWidth,window.innerHeight);
+      R.setSize(window.innerWidth, window.innerHeight);
     });
   </script>
 </body>
