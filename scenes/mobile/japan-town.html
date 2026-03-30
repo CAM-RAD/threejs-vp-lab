@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Japan Town — VP Lab</title>
+  <style>
+    *{margin:0}body{background:#1a2218;overflow:hidden;touch-action:none}canvas{display:block}
+    #ver{position:fixed;top:8px;left:8px;color:rgba(255,255,255,0.25);font-family:monospace;font-size:10px;z-index:30;pointer-events:none}
+    #load{position:fixed;top:0;left:0;right:0;bottom:0;background:#1a2218;display:flex;align-items:center;justify-content:center;z-index:50;font-family:monospace;color:#88a825;font-size:13px;flex-direction:column;gap:8px;transition:opacity 1s}
+    #load span{color:#555;font-size:10px}
+    .gone{opacity:0!important;pointer-events:none!important}
+    #ctrl{position:fixed;bottom:8px;right:8px;z-index:20;background:rgba(0,0,0,0.5);padding:8px 10px;border-radius:6px;font-family:monospace;font-size:9px;color:rgba(255,255,255,0.55);line-height:2}
+    #ctrl label{display:block}
+    #ctrl input[type="range"]{width:75px;vertical-align:middle}
+  </style>
+</head>
+<body>
+  <div id="ver">v1.0</div>
+  <div id="load">Building Town...<span id="prog">0%</span></div>
+  <div id="ctrl">
+    <label>Mist <input type="range" id="mist" min="0" max="100" value="35"></label>
+    <label>Bloom <input type="range" id="blm" min="0" max="100" value="40"></label>
+    <label>Time <input type="range" id="tod" min="0" max="100" value="55"></label>
+  </div>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+  </script>
+  <script type="module">
+    const THREE = await import('three');
+    const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
+    const { EffectComposer } = await import('three/addons/postprocessing/EffectComposer.js');
+    const { RenderPass } = await import('three/addons/postprocessing/RenderPass.js');
+    const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js');
+    const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+    const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+
+    const W = window.innerWidth, H = window.innerHeight;
+    const R = new THREE.WebGLRenderer({ antialias: false });
+    R.setSize(W, H); R.setPixelRatio(1);
+    R.toneMapping = THREE.ACESFilmicToneMapping;
+    R.toneMappingExposure = 0.85;
+    document.body.appendChild(R.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x4a6a55);
+    scene.fog = new THREE.FogExp2(0x4a6a55, 0.008);
+
+    const cam = new THREE.PerspectiveCamera(50, W/H, 0.1, 300);
+    cam.position.set(20, 15, 25);
+
+    const orbit = new OrbitControls(cam, R.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 2, 0);
+    orbit.maxPolarAngle = Math.PI / 1.8;
+    orbit.minDistance = 3;
+    orbit.maxDistance = 60;
+    orbit.enablePan = true;
+    orbit.panSpeed = 0.8;
+    orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+    // Bloom
+    const composer = new EffectComposer(R);
+    composer.addPass(new RenderPass(scene, cam));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.5, 0.6, 0.45);
+    composer.addPass(bloom);
+
+    // ─── LIGHTS ───────────────────────────────────────
+    scene.add(new THREE.AmbientLight(0x556655, 0.6));
+
+    const sun = new THREE.DirectionalLight(0xffeedd, 1.8);
+    sun.position.set(15, 20, 10);
+    scene.add(sun);
+
+    const fill = new THREE.DirectionalLight(0x88aacc, 0.5);
+    fill.position.set(-12, 8, -8);
+    scene.add(fill);
+
+    // Lantern lights (warm accents throughout town)
+    const lanLights = [];
+    function addLantern(x, y, z) {
+      const l = new THREE.PointLight(0xff6622, 1.5, 10);
+      l.position.set(x, y, z); scene.add(l); lanLights.push(l);
+    }
+    addLantern(-5, 2.5, 5);
+    addLantern(6, 2.5, -3);
+    addLantern(-8, 2.5, -8);
+    addLantern(10, 2.5, 8);
+    addLantern(0, 2.5, -12);
+
+    // ─── TERRAIN — rolling hills ──────────────────────
+    const terrainGeo = new THREE.PlaneGeometry(120, 120, 60, 60);
+    terrainGeo.rotateX(-Math.PI / 2);
+    const tp = terrainGeo.attributes.position;
+    const tc = new Float32Array(tp.count * 3);
+
+    for (let i = 0; i < tp.count; i++) {
+      const x = tp.getX(i), z = tp.getZ(i);
+      // Flat in the center (town area), hills around edges
+      const dist = Math.sqrt(x*x + z*z);
+      let y = 0;
+      if (dist > 20) {
+        const hillFactor = (dist - 20) / 30;
+        y = hillFactor * hillFactor * 8;
+        y += Math.sin(x * 0.08) * Math.cos(z * 0.06) * 4 * hillFactor;
+        y += Math.sin(x * 0.15 + 1) * Math.cos(z * 0.12 + 2) * 2 * hillFactor;
+      }
+      tp.setY(i, y);
+
+      // Vertex colors — green grass, darker in valleys
+      const green = 0.25 + Math.min(y / 15, 0.3);
+      tc[i*3] = 0.15 + y * 0.01;
+      tc[i*3+1] = green;
+      tc[i*3+2] = 0.1 + y * 0.005;
+    }
+    terrainGeo.setAttribute('color', new THREE.BufferAttribute(tc, 3));
+    terrainGeo.computeVertexNormals();
+
+    const terrain = new THREE.Mesh(terrainGeo, new THREE.MeshPhongMaterial({
+      vertexColors: true, shininess: 8, flatShading: false,
+    }));
+    scene.add(terrain);
+
+    // ─── STREETS (dirt paths through town) ────────────
+    const streetMat = new THREE.MeshPhongMaterial({ color: 0x8a7a65, shininess: 10 });
+    function B(w,h,d,m,x,y,z) { const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); scene.add(o); }
+    function C(rt,rb,h,s,m,x,y,z) { const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); o.position.set(x,y,z); scene.add(o); }
+
+    // Main street (N-S)
+    B(3, 0.05, 30, streetMat, 0, 0.03, 0);
+    // Cross street (E-W)
+    B(25, 0.05, 3, streetMat, 0, 0.03, -5);
+    // Side path
+    B(3, 0.05, 12, streetMat, -8, 0.03, 3);
+    // Another path
+    B(12, 0.05, 2.5, streetMat, 8, 0.03, 6);
+
+    // ─── LOAD 3D MODELS ───────────────────────────────
+    const loader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/libs/draco/gltf/');
+    loader.setDRACOLoader(dracoLoader);
+
+    const progEl = document.getElementById('prog');
+    let mixer = null;
+    let loaded = 0;
+    const totalAssets = 6;
+    function prog() { loaded++; progEl.textContent = Math.round(loaded/totalAssets*100) + '%'; }
+
+    // Helper to load + place + clone
+    const modelCache = {};
+    async function loadAsset(name, url) {
+      if (modelCache[name]) { prog(); return modelCache[name]; }
+      try {
+        const gltf = await new Promise((r, j) => loader.load(url, r, undefined, j));
+        modelCache[name] = gltf;
+        prog();
+        return gltf;
+      } catch(e) { prog(); return null; }
+    }
+
+    function placeModel(gltf, x, y, z, scale, rotY=0) {
+      if (!gltf) return null;
+      const m = gltf.scene.clone();
+      m.position.set(x, y, z);
+      m.scale.set(scale, scale, scale);
+      m.rotation.y = rotY;
+      scene.add(m);
+      return m;
+    }
+
+    // Load all unique assets
+    const tokyoGltf = await loadAsset('tokyo', '../../assets/littlest-tokyo.glb');
+    const shrineGltf = await loadAsset('shrine', '../../assets/shrine.glb');
+    const templeBaseGltf = await loadAsset('temple-base', '../../assets/temple-base.glb');
+    const lampGltf = await loadAsset('lamp', '../../assets/lamp.glb');
+    const stairsGltf = await loadAsset('stairs', '../../assets/entrance-stairs.glb');
+    const bellGltf = await loadAsset('bell', '../../assets/bell-structure.glb');
+
+    // ─── PLACE TOWN LAYOUT ────────────────────────────
+
+    // Main town center — LittlestTokyo (animated street)
+    if (tokyoGltf) {
+      const tokyo = tokyoGltf.scene;
+      tokyo.position.set(0, 0, 0);
+      tokyo.scale.set(0.01, 0.01, 0.01);
+      scene.add(tokyo);
+      if (tokyoGltf.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(tokyo);
+        mixer.clipAction(tokyoGltf.animations[0]).play();
+      }
+    }
+
+    // Shrines scattered around
+    placeModel(shrineGltf, -10, 0, -8, 1.8, 0.5);
+    placeModel(shrineGltf, 12, 0, -10, 1.5, -0.8);
+    placeModel(shrineGltf, -6, 0, 10, 2, 2.2);
+
+    // Temple bases as buildings
+    placeModel(templeBaseGltf, 8, 0, 5, 1.5, 0.3);
+    placeModel(templeBaseGltf, -12, 0, 3, 1.8, 1.5);
+    placeModel(templeBaseGltf, 5, 0, -12, 1.3, -1.2);
+
+    // Lanterns along streets
+    const lampPositions = [
+      [-3, 0, 3], [3, 0, 3], [-3, 0, -3], [3, 0, -3],
+      [-3, 0, -8], [3, 0, -8], [-8, 0, 0], [-8, 0, 6],
+      [8, 0, 3], [8, 0, 9], [0, 0, -13], [0, 0, 8],
+    ];
+    lampPositions.forEach(([x, y, z]) => {
+      placeModel(lampGltf, x, y, z, 1.2, Math.random() * 6.28);
+    });
+
+    // Entrance stairs
+    placeModel(stairsGltf, -10, 0, -3, 1.5, 0.8);
+    placeModel(stairsGltf, 12, 0, 2, 1.3, -1.5);
+
+    // Bell structure
+    placeModel(bellGltf, 0, 0, 12, 1.2, 0);
+
+    // ─── TREES — forest on hills ──────────────────────
+    const treeMat = new THREE.MeshPhongMaterial({ color: 0x1a3a1a, shininess: 8 });
+    const treeMatB = new THREE.MeshPhongMaterial({ color: 0x224422, shininess: 8 });
+    const trunkMat = new THREE.MeshPhongMaterial({ color: 0x3a2a1a, shininess: 5 });
+    const blossomMat = new THREE.MeshPhongMaterial({ color: 0xdd8899, shininess: 12 });
+
+    // Dense forest trees on the hills (only where terrain is elevated)
+    for (let i = 0; i < 50; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 22 + Math.random() * 30;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      // Sample terrain height
+      const hillFactor = Math.max(0, (dist - 20) / 30);
+      let y = hillFactor * hillFactor * 8;
+      y += Math.sin(x * 0.08) * Math.cos(z * 0.06) * 4 * hillFactor;
+
+      const h = 4 + Math.random() * 5;
+      const sc = 0.6 + Math.random() * 0.5;
+      const mat = Math.random() > 0.3 ? treeMat : treeMatB;
+      // Trunk
+      C(0.12*sc, 0.2*sc, h*0.4, 4, trunkMat, x, y + h*0.2, z);
+      // Canopy layers
+      C(1.5*sc, 0, h*0.45, 5, mat, x, y + h*0.55, z);
+      C(1.2*sc, 0, h*0.35, 5, mat, x, y + h*0.72, z);
+    }
+
+    // Cherry blossom trees near the town
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 14 + Math.random() * 5;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      C(0.1, 0.15, 2.5, 4, trunkMat, x, 1.25, z);
+      const canopy = new THREE.Mesh(new THREE.SphereGeometry(2, 6, 5), blossomMat);
+      canopy.position.set(x, 3.5, z);
+      canopy.scale.set(1, 0.7, 1);
+      scene.add(canopy);
+    }
+
+    // ─── MOUNTAINS (distant backdrop) ─────────────────
+    const mtnMat = new THREE.MeshPhongMaterial({ color: 0x3a5a3a, shininess: 5 });
+    const mtnSnow = new THREE.MeshPhongMaterial({ color: 0xddeedd, shininess: 10 });
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.5;
+      const dist = 55 + Math.random() * 15;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      const mh = 15 + Math.random() * 25;
+      const mw = 10 + Math.random() * 15;
+      C(mw, 0, mh, 4 + Math.floor(Math.random()*2), mtnMat, x, mh*0.4, z);
+      // Snow cap
+      if (mh > 25) {
+        C(mw*0.3, 0, mh*0.2, 4, mtnSnow, x, mh*0.7, z);
+      }
+    }
+
+    // ─── WATER (small river/stream) ───────────────────
+    const waterMat = new THREE.MeshPhongMaterial({
+      color: 0x2a5a6a, shininess: 80, specular: 0x446688,
+      transparent: true, opacity: 0.7,
+    });
+    B(2.5, 0.02, 35, waterMat, 15, 0.04, 0);
+    // Small bridge over river
+    B(4, 0.15, 2.8, new THREE.MeshPhongMaterial({ color: 0x6a3a1a, shininess: 15 }), 15, 0.5, -5);
+    // Bridge railings
+    B(0.08, 0.6, 2.8, new THREE.MeshPhongMaterial({ color: 0x5a2a10, shininess: 10 }), 13.2, 0.8, -5);
+    B(0.08, 0.6, 2.8, new THREE.MeshPhongMaterial({ color: 0x5a2a10, shininess: 10 }), 16.8, 0.8, -5);
+
+    // ─── CHERRY BLOSSOM PETALS ────────────────────────
+    const petalCount = 250;
+    const petalGeo = new THREE.BufferGeometry();
+    const pp = new Float32Array(petalCount * 3);
+    const pv = new Float32Array(petalCount * 3);
+    for (let i = 0; i < petalCount; i++) {
+      pp[i*3] = (Math.random() - 0.5) * 50;
+      pp[i*3+1] = Math.random() * 15;
+      pp[i*3+2] = (Math.random() - 0.5) * 50;
+      pv[i*3] = (Math.random() - 0.5) * 0.006;
+      pv[i*3+1] = -(0.002 + Math.random() * 0.006);
+      pv[i*3+2] = (Math.random() - 0.5) * 0.006;
+    }
+    petalGeo.setAttribute('position', new THREE.BufferAttribute(pp, 3));
+    const petals = new THREE.Points(petalGeo, new THREE.PointsMaterial({
+      color: 0xffbbcc, size: 0.1, transparent: true, opacity: 0.7, sizeAttenuation: true,
+    }));
+    scene.add(petals);
+
+    // ─── FIREFLIES ────────────────────────────────────
+    const flyCount = 25;
+    const flyGeo = new THREE.BufferGeometry();
+    const flyPos = new Float32Array(flyCount * 3);
+    for (let i = 0; i < flyCount; i++) {
+      flyPos[i*3] = (Math.random() - 0.5) * 30;
+      flyPos[i*3+1] = 0.5 + Math.random() * 3;
+      flyPos[i*3+2] = (Math.random() - 0.5) * 30;
+    }
+    flyGeo.setAttribute('position', new THREE.BufferAttribute(flyPos, 3));
+    const fireflies = new THREE.Points(flyGeo, new THREE.PointsMaterial({
+      color: 0xccff44, size: 0.07, transparent: true, opacity: 0.6, sizeAttenuation: true,
+    }));
+    scene.add(fireflies);
+
+    // ─── LOADED ───────────────────────────────────────
+    setTimeout(() => document.getElementById('load').classList.add('gone'), 800);
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const mistEl = document.getElementById('mist');
+    const blmEl = document.getElementById('blm');
+    const todEl = document.getElementById('tod');
+
+    // ─── ANIMATE ──────────────────────────────────────
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+
+      // Petals
+      const pa = petals.geometry.attributes.position;
+      for (let i = 0; i < petalCount; i++) {
+        pa.array[i*3] += pv[i*3] + Math.sin(t * 0.3 + i * 0.2) * 0.003;
+        pa.array[i*3+1] += pv[i*3+1];
+        pa.array[i*3+2] += pv[i*3+2] + Math.cos(t * 0.25 + i * 0.15) * 0.002;
+        if (pa.array[i*3+1] < -0.3) {
+          pa.array[i*3] = (Math.random() - 0.5) * 50;
+          pa.array[i*3+1] = 12 + Math.random() * 4;
+          pa.array[i*3+2] = (Math.random() - 0.5) * 50;
+        }
+      }
+      pa.needsUpdate = true;
+
+      // Fireflies
+      const fa = fireflies.geometry.attributes.position;
+      for (let i = 0; i < flyCount; i++) {
+        fa.array[i*3] += Math.sin(t * 0.4 + i * 2) * 0.006;
+        fa.array[i*3+1] += Math.cos(t * 0.3 + i * 1.5) * 0.004;
+        fa.array[i*3+2] += Math.sin(t * 0.35 + i * 1.7) * 0.005;
+      }
+      fa.needsUpdate = true;
+      fireflies.material.opacity = 0.3 + Math.sin(t * 1.5) * 0.25;
+
+      // Lantern flicker
+      lanLights.forEach((l, i) => {
+        l.intensity = 1.5 + Math.sin(t * 2.5 + i * 1.3) * 0.3;
+      });
+
+      // Controls
+      scene.fog.density = 0.003 + (mistEl.value / 100) * 0.02;
+      bloom.strength = 0.2 + (blmEl.value / 100) * 0.8;
+
+      // Time of day
+      const tod = todEl.value / 100;
+      const bgColor = new THREE.Color().setHSL(0.3, 0.15 + tod * 0.15, 0.1 + tod * 0.2);
+      scene.background = bgColor;
+      scene.fog.color = bgColor;
+      sun.intensity = 0.5 + tod * 2;
+      R.toneMappingExposure = 0.5 + tod * 0.5;
+
+      if (mixer) mixer.update(dt);
+      orbit.update();
+      composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      cam.aspect = window.innerWidth / window.innerHeight;
+      cam.updateProjectionMatrix();
+      R.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
