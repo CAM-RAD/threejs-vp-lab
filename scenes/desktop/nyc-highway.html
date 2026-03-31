@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>NYC Highway Chase — VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info { position: fixed; bottom: 14px; left: 14px; color: rgba(255,255,255,0.45); font-family: monospace; font-size: 11px; z-index: 10; pointer-events: none; }
+    #controls { position: fixed; top: 14px; right: 14px; color: rgba(255,255,255,0.85); font-family: monospace; font-size: 11px; z-index: 10; background: rgba(0,0,0,0.65); padding: 12px; border-radius: 4px; line-height: 2; }
+    #controls label { display: block; }
+    #controls input[type="range"] { width: 110px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="info">NYC Highway Chase — VP Lab v1.0</div>
+  <div id="controls">
+    <label>Rain <input type="range" id="rain" min="0" max="100" value="40"></label>
+    <label>Neon Glow <input type="range" id="neon" min="0" max="100" value="70"></label>
+    <label>Speed <input type="range" id="spd" min="0" max="100" value="50"></label>
+    <label><input type="checkbox" id="fly" checked> Chase Cam</label>
+  </div>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // ─── SETUP ────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.6;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050510);
+    scene.fog = new THREE.FogExp2(0x080815, 0.006);
+    const clock = new THREE.Clock();
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 2000);
+    camera.position.set(0, 8, 40);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 3, 0);
+
+    // ─── MATERIALS ────────────────────────────────────
+    const M = {
+      asphalt:    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.85 }),
+      asphaltWet: new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.3, metalness: 0.1 }),
+      concrete:   new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 }),
+      sidewalk:   new THREE.MeshStandardMaterial({ color: 0x454540, roughness: 0.85 }),
+      curb:       new THREE.MeshStandardMaterial({ color: 0x555550, roughness: 0.8 }),
+      building:   new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.7 }),
+      buildingL:  new THREE.MeshStandardMaterial({ color: 0x222230, roughness: 0.7 }),
+      buildingD:  new THREE.MeshStandardMaterial({ color: 0x151520, roughness: 0.75 }),
+      glass:      new THREE.MeshStandardMaterial({ color: 0x112244, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.6 }),
+      glassLit:   new THREE.MeshStandardMaterial({ color: 0xffcc66, emissive: 0xffaa33, emissiveIntensity: 0.3, roughness: 0.2 }),
+      metal:      new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.8 }),
+      guardrail:  new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.5, metalness: 0.6 }),
+      lineWhite:  new THREE.MeshStandardMaterial({ color: 0xcccccc, emissive: 0x333333, emissiveIntensity: 0.3, roughness: 0.6 }),
+      lineYellow: new THREE.MeshStandardMaterial({ color: 0xccaa00, emissive: 0x554400, emissiveIntensity: 0.3, roughness: 0.6 }),
+      neonRed:    new THREE.MeshStandardMaterial({ color: 0xff0033, emissive: 0xff0033, emissiveIntensity: 2 }),
+      neonBlue:   new THREE.MeshStandardMaterial({ color: 0x0044ff, emissive: 0x0044ff, emissiveIntensity: 2 }),
+      neonPink:   new THREE.MeshStandardMaterial({ color: 0xff0088, emissive: 0xff0088, emissiveIntensity: 1.5 }),
+      neonCyan:   new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.5 }),
+      neonWhite:  new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0 }),
+      taillight:  new THREE.MeshStandardMaterial({ color: 0xff1111, emissive: 0xff0000, emissiveIntensity: 3 }),
+      headlight:  new THREE.MeshStandardMaterial({ color: 0xffeedd, emissive: 0xffeedd, emissiveIntensity: 3 }),
+      steam:      new THREE.MeshStandardMaterial({ color: 0x888888, transparent: true, opacity: 0.15 }),
+    };
+
+    function box(w, h, d, mat) {
+      return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    }
+    function cyl(rt, rb, h, seg, mat) {
+      return new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+    }
+
+    // ─── ROAD ─────────────────────────────────────────
+    const roadLen = 600;
+
+    // Main road surface (wet asphalt)
+    const road = box(20, 0.1, roadLen, M.asphaltWet);
+    road.position.set(0, 0, -roadLen / 2 + 50);
+    road.receiveShadow = true;
+    scene.add(road);
+
+    // Center double yellow line
+    for (let z = -roadLen + 50; z < 60; z += 8) {
+      const l1 = box(0.15, 0.12, 5, M.lineYellow);
+      l1.position.set(-0.3, 0.06, z);
+      scene.add(l1);
+      const l2 = box(0.15, 0.12, 5, M.lineYellow);
+      l2.position.set(0.3, 0.06, z);
+      scene.add(l2);
+    }
+
+    // Lane dashes
+    for (let lane of [-5, 5]) {
+      for (let z = -roadLen + 50; z < 60; z += 12) {
+        const dash = box(0.12, 0.12, 4, M.lineWhite);
+        dash.position.set(lane, 0.06, z);
+        scene.add(dash);
+      }
+    }
+
+    // Edge lines (solid white)
+    for (let side of [-9.8, 9.8]) {
+      const edge = box(0.15, 0.12, roadLen, M.lineWhite);
+      edge.position.set(side, 0.06, -roadLen / 2 + 50);
+      scene.add(edge);
+    }
+
+    // ─── SIDEWALKS & CURBS ────────────────────────────
+    for (let side of [-1, 1]) {
+      // Curb
+      const curb = box(0.5, 0.3, roadLen, M.curb);
+      curb.position.set(side * 10.5, 0.15, -roadLen / 2 + 50);
+      scene.add(curb);
+
+      // Sidewalk
+      const walk = box(6, 0.2, roadLen, M.sidewalk);
+      walk.position.set(side * 14, 0.1, -roadLen / 2 + 50);
+      walk.receiveShadow = true;
+      scene.add(walk);
+    }
+
+    // ─── BUILDINGS (NYC skyscrapers) ──────────────────
+    const buildingLights = [];
+
+    function addBuilding(x, z, w, d, h, mat) {
+      const b = box(w, h, d, mat);
+      b.position.set(x, h / 2, z);
+      b.castShadow = true;
+      b.receiveShadow = true;
+      scene.add(b);
+
+      // Window grid (emissive rectangles on front face)
+      const floors = Math.floor(h / 4);
+      const cols = Math.floor(w / 3);
+      const facing = x > 0 ? -1 : 1;
+      for (let f = 1; f < floors; f++) {
+        for (let c = 0; c < cols; c++) {
+          if (Math.random() > 0.6) {
+            const win = box(1.5, 2, 0.1, Math.random() > 0.3 ? M.glassLit : M.glass);
+            win.position.set(
+              x + facing * (d / 2 + 0.05),
+              f * 4 + 2,
+              z - w / 2 + 1.5 + c * 3
+            );
+            win.rotation.y = facing > 0 ? 0 : Math.PI;
+            scene.add(win);
+          }
+        }
+      }
+
+      return b;
+    }
+
+    // Left side buildings (varying heights for NYC skyline)
+    const leftX = -22;
+    for (let z = -roadLen + 50; z < 50; z += 25) {
+      const h = 30 + Math.random() * 80;
+      const w = 15 + Math.random() * 10;
+      const d = 12 + Math.random() * 8;
+      const mats = [M.building, M.buildingL, M.buildingD];
+      addBuilding(leftX - d / 2, z, w, d, h, mats[Math.floor(Math.random() * 3)]);
+    }
+
+    // Right side buildings
+    const rightX = 22;
+    for (let z = -roadLen + 50; z < 50; z += 25) {
+      const h = 25 + Math.random() * 90;
+      const w = 14 + Math.random() * 12;
+      const d = 10 + Math.random() * 10;
+      const mats = [M.building, M.buildingL, M.buildingD];
+      addBuilding(rightX + d / 2, z, w, d, h, mats[Math.floor(Math.random() * 3)]);
+    }
+
+    // Second row (deeper, taller for skyline depth)
+    for (let z = -roadLen + 60; z < 40; z += 35) {
+      const h = 60 + Math.random() * 100;
+      addBuilding(-45 - Math.random() * 15, z, 20, 15, h, M.buildingD);
+      addBuilding(45 + Math.random() * 15, z, 20, 15, h, M.buildingD);
+    }
+
+    // ─── STREETLIGHTS ─────────────────────────────────
+    const streetLightRefs = [];
+
+    function addStreetLight(x, z, side) {
+      const g = new THREE.Group();
+
+      // Pole
+      const pole = cyl(0.15, 0.18, 8, 6, M.metal);
+      pole.position.y = 4;
+      g.add(pole);
+
+      // Arm
+      const arm = box(3 * side, 0.12, 0.12, M.metal);
+      arm.position.set(side * 1.5, 8, 0);
+      g.add(arm);
+
+      // Light fixture
+      const fixture = box(1.2, 0.3, 0.6, M.metal);
+      fixture.position.set(side * 2.8, 7.8, 0);
+      g.add(fixture);
+
+      // Light bulb (emissive)
+      const bulb = box(0.8, 0.08, 0.4, M.neonWhite);
+      bulb.position.set(side * 2.8, 7.6, 0);
+      g.add(bulb);
+
+      g.position.set(x, 0, z);
+      scene.add(g);
+
+      // Actual light
+      const light = new THREE.SpotLight(0xffddaa, 3, 25, Math.PI / 4, 0.5, 1.5);
+      light.position.set(x + side * 2.8, 7.6, z);
+      light.target.position.set(x + side * 1, 0, z);
+      scene.add(light);
+      scene.add(light.target);
+      streetLightRefs.push(light);
+    }
+
+    for (let z = -roadLen + 70; z < 50; z += 30) {
+      addStreetLight(-11, z, 1);
+      addStreetLight(11, z + 15, -1);
+    }
+
+    // ─── NEON SIGNS (NYC feel) ────────────────────────
+    function addNeonSign(x, y, z, w, h, mat, rotY) {
+      const sign = box(w, h, 0.1, mat);
+      sign.position.set(x, y, z);
+      sign.rotation.y = rotY || 0;
+      scene.add(sign);
+
+      // Glow light
+      const color = mat.emissive ? mat.emissive.getHex() : 0xff0088;
+      const gl = new THREE.PointLight(color, 1.5, 15, 2);
+      gl.position.set(x, y, z + (rotY ? 0 : 1));
+      scene.add(gl);
+    }
+
+    // Scatter neon signs on buildings
+    addNeonSign(-17.5, 12, -20, 4, 1.5, M.neonPink, 0);
+    addNeonSign(-17.5, 8, -60, 5, 1, M.neonCyan, 0);
+    addNeonSign(17.5, 15, -40, 3, 2, M.neonRed, Math.PI);
+    addNeonSign(17.5, 10, -100, 4, 1.5, M.neonBlue, Math.PI);
+    addNeonSign(-17.5, 20, -140, 6, 1, M.neonPink, 0);
+    addNeonSign(17.5, 18, -180, 4, 2, M.neonCyan, Math.PI);
+    addNeonSign(-17.5, 14, -220, 5, 1.5, M.neonRed, 0);
+    addNeonSign(17.5, 12, -260, 3, 2, M.neonBlue, Math.PI);
+    addNeonSign(-17.5, 22, -300, 6, 1, M.neonCyan, 0);
+    addNeonSign(17.5, 16, -350, 5, 1.5, M.neonPink, Math.PI);
+    addNeonSign(-17.5, 10, -400, 4, 2, M.neonRed, 0);
+    addNeonSign(17.5, 25, -450, 7, 1, M.neonBlue, Math.PI);
+
+    // ─── GUARDRAILS ───────────────────────────────────
+    for (let side of [-10.2, 10.2]) {
+      for (let z = -roadLen + 50; z < 50; z += 3) {
+        const post = box(0.08, 0.7, 0.08, M.guardrail);
+        post.position.set(side, 0.45, z);
+        scene.add(post);
+      }
+      const rail = box(0.06, 0.12, roadLen, M.guardrail);
+      rail.position.set(side, 0.7, -roadLen / 2 + 50);
+      scene.add(rail);
+    }
+
+    // ─── OBJAVERSE ASSETS ─────────────────────────────
+    const loader = new GLTFLoader();
+    const ASSET_BASE = '../../assets/nyc/';
+
+    function placeModel(file, x, y, z, targetH, rotY) {
+      loader.load(ASSET_BASE + file, (gltf) => {
+        const model = gltf.scene;
+        const bbox = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        const s = targetH / Math.max(size.y, 0.01);
+        model.scale.setScalar(s);
+        const bboxScaled = new THREE.Box3().setFromObject(model);
+        const yOffset = -bboxScaled.min.y;
+        model.position.set(x, y + yOffset, z);
+        model.rotation.y = rotY || 0;
+        model.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        scene.add(model);
+      });
+    }
+
+    // Police cars (chase vehicles with lights)
+    placeModel('Police Car.glb', -3, 0.05, 20, 1.5, Math.PI);
+    placeModel('Police Car.glb', -7, 0.05, 35, 1.5, Math.PI + 0.1);
+
+    // Target car (ahead of police)
+    placeModel('gibrissan.glb', 3, 0.05, -10, 1.5, Math.PI);
+
+    // Taxi cabs in traffic
+    placeModel('Chevvy Final.glb', 6, 0.05, -50, 1.5, Math.PI);
+    placeModel('Chevvy Final.glb', -4, 0.05, -90, 1.5, Math.PI + 0.05);
+    placeModel('Chevvy Final.glb', 3, 0.05, -160, 1.5, Math.PI);
+
+    // Other cars on road
+    placeModel('wdm.glb', -6, 0.05, -130, 1.5, Math.PI);
+    placeModel('FFX Runner - Playable Car.glb', 5, 0.05, -200, 1.5, Math.PI);
+    placeModel('gibrissan.glb', -3, 0.05, -250, 1.5, Math.PI);
+    placeModel('wdm.glb', 4, 0.05, -320, 1.5, Math.PI);
+
+    // Trucks
+    placeModel('Garbage Truck.glb', 7, 0.05, -70, 2.8, Math.PI);
+    placeModel('KAMAZ.glb', -6, 0.05, -180, 3.0, Math.PI);
+
+    // Motorcycle weaving
+    placeModel('HCR2 Chopper.glb', 0, 0.05, -30, 1.2, Math.PI + 0.3);
+
+    // Parked cars on sides
+    placeModel('gibrissan.glb', -12, 0.2, -20, 1.5, Math.PI / 2);
+    placeModel('wdm.glb', 12, 0.2, -60, 1.5, -Math.PI / 2);
+    placeModel('Chevvy Final.glb', -12, 0.2, -110, 1.5, Math.PI / 2);
+    placeModel('gibrissan.glb', 12, 0.2, -150, 1.5, -Math.PI / 2);
+    placeModel('wdm.glb', -12, 0.2, -200, 1.5, Math.PI / 2);
+    placeModel('FFX Runner - Playable Car.glb', 12, 0.2, -280, 1.5, -Math.PI / 2);
+
+    // Street props
+    placeModel('Traffic Light.glb', -11.5, 0, -20, 5, 0);
+    placeModel('Traffic Light.glb', 11.5, 0, -80, 5, Math.PI);
+    placeModel('Traffic Light.glb', -11.5, 0, -150, 5, 0);
+    placeModel('Traffic Light.glb', 11.5, 0, -230, 5, Math.PI);
+    placeModel('Traffic Light.glb', -11.5, 0, -320, 5, 0);
+
+    // Fire hydrants
+    placeModel('Hydrant low poly.glb', -13, 0.2, -10, 0.7, 0);
+    placeModel('Hydrant low poly.glb', 13, 0.2, -100, 0.7, 0.5);
+    placeModel('Hydrant low poly.glb', -13, 0.2, -190, 0.7, 0.3);
+    placeModel('Hydrant low poly.glb', 13, 0.2, -300, 0.7, 0);
+
+    // Dumpsters in alleys
+    placeModel('Dumpster.glb', -16, 0.2, -45, 1.5, 0.3);
+    placeModel('Dumpster.glb', 16, 0.2, -120, 1.5, -0.2);
+    placeModel('Dumpster.glb', -16, 0.2, -250, 1.5, 0.1);
+
+    // Traffic cones (crash scene / construction)
+    for (let i = 0; i < 6; i++) {
+      placeModel('Traffic Cone  Low-Poly 3D Model.glb',
+        -8 + i * 2 + Math.random(), 0.05, -290 + Math.random() * 3,
+        0.7, Math.random() * 0.5);
+    }
+    // Knocked over cones
+    placeModel('Dirty cone.glb', 2, 0.05, -285, 0.7, 1.5);
+    placeModel('Dirty cone.glb', -1, 0.05, -288, 0.7, -0.8);
+
+    // Stop signs
+    placeModel('Rusty Stop Sign.glb', -13.5, 0.2, -160, 2.5, 0);
+    placeModel('Rusty Stop Sign.glb', 13.5, 0.2, -310, 2.5, Math.PI);
+
+    // Street lanterns (decorative)
+    placeModel('Street lantern.glb', -13, 0.2, -40, 4, 0);
+    placeModel('Street lantern.glb', 13, 0.2, -80, 4, 0);
+    placeModel('Street lantern.glb', -13, 0.2, -140, 4, 0);
+    placeModel('Street lantern.glb', 13, 0.2, -210, 4, 0);
+
+    // ─── POLICE LIGHTS (red/blue flashing) ────────────
+    const policeLight1R = new THREE.PointLight(0xff0000, 5, 30, 2);
+    policeLight1R.position.set(-3, 2.2, 20);
+    scene.add(policeLight1R);
+    const policeLight1B = new THREE.PointLight(0x0044ff, 5, 30, 2);
+    policeLight1B.position.set(-3, 2.2, 20);
+    scene.add(policeLight1B);
+
+    const policeLight2R = new THREE.PointLight(0xff0000, 4, 25, 2);
+    policeLight2R.position.set(-7, 2.2, 35);
+    scene.add(policeLight2R);
+    const policeLight2B = new THREE.PointLight(0x0044ff, 4, 25, 2);
+    policeLight2B.position.set(-7, 2.2, 35);
+    scene.add(policeLight2B);
+
+    // ─── HEADLIGHTS (chase car) ───────────────────────
+    const headL = new THREE.SpotLight(0xffeedd, 8, 60, Math.PI / 6, 0.4, 1.5);
+    headL.position.set(2, 1, -10);
+    headL.target.position.set(2, 0, -30);
+    scene.add(headL); scene.add(headL.target);
+    const headR = new THREE.SpotLight(0xffeedd, 8, 60, Math.PI / 6, 0.4, 1.5);
+    headR.position.set(4, 1, -10);
+    headR.target.position.set(4, 0, -30);
+    scene.add(headR); scene.add(headR.target);
+
+    // ─── STEAM VENTS ──────────────────────────────────
+    function addSteamVent(x, z) {
+      const vent = cyl(0.3, 0.3, 0.4, 8, M.metal);
+      vent.position.set(x, 0.2, z);
+      scene.add(vent);
+      // Steam plume (animated in render loop)
+      const steam = cyl(0.8, 0.1, 3, 6, M.steam);
+      steam.position.set(x, 2, z);
+      scene.add(steam);
+      return steam;
+    }
+
+    const steamVents = [];
+    steamVents.push(addSteamVent(-8, -50));
+    steamVents.push(addSteamVent(7, -150));
+    steamVents.push(addSteamVent(-6, -270));
+
+    // ─── RAIN PARTICLES ───────────────────────────────
+    const rainCount = 8000;
+    const rainGeo = new THREE.BufferGeometry();
+    const rainPositions = new Float32Array(rainCount * 3);
+    const rainVelocities = new Float32Array(rainCount);
+
+    for (let i = 0; i < rainCount; i++) {
+      rainPositions[i * 3] = (Math.random() - 0.5) * 80;
+      rainPositions[i * 3 + 1] = Math.random() * 60;
+      rainPositions[i * 3 + 2] = Math.random() * roadLen - roadLen + 50;
+      rainVelocities[i] = 0.5 + Math.random() * 1.0;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
+    const rainMat = new THREE.PointsMaterial({ color: 0x8888aa, size: 0.08, transparent: true, opacity: 0.5 });
+    const rainMesh = new THREE.Points(rainGeo, rainMat);
+    scene.add(rainMesh);
+
+    // ─── WET ROAD REFLECTIONS (simple mirror plane) ───
+    const reflectPlane = box(20, 0.01, roadLen, new THREE.MeshStandardMaterial({
+      color: 0x111118,
+      roughness: 0.05,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.25,
+    }));
+    reflectPlane.position.set(0, 0.08, -roadLen / 2 + 50);
+    reflectPlane.receiveShadow = true;
+    scene.add(reflectPlane);
+
+    // ─── AMBIENT LIGHTING ─────────────────────────────
+    scene.add(new THREE.AmbientLight(0x111122, 0.3));
+    const hemi = new THREE.HemisphereLight(0x0a0a20, 0x000000, 0.2);
+    scene.add(hemi);
+
+    // Moonlight
+    const moon = new THREE.DirectionalLight(0x334466, 0.4);
+    moon.position.set(30, 80, 50);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.camera.left = -60; moon.shadow.camera.right = 60;
+    moon.shadow.camera.top = 60; moon.shadow.camera.bottom = -60;
+    moon.shadow.camera.far = 200;
+    moon.shadow.bias = -0.001;
+    scene.add(moon);
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const rainSlider = document.getElementById('rain');
+    const neonSlider = document.getElementById('neon');
+    const spdSlider = document.getElementById('spd');
+    const flyCheck = document.getElementById('fly');
+
+    let chaseZ = 30;
+
+    // ─── ANIMATE ──────────────────────────────────────
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const time = clock.getElapsedTime();
+      const speed = parseFloat(spdSlider.value) / 100;
+
+      // Police light flash
+      const flash = Math.sin(time * 12);
+      policeLight1R.intensity = flash > 0 ? 8 : 0;
+      policeLight1B.intensity = flash > 0 ? 0 : 8;
+      policeLight2R.intensity = flash > 0.2 ? 6 : 0;
+      policeLight2B.intensity = flash > 0.2 ? 0 : 6;
+
+      // Rain
+      const rainIntensity = parseFloat(rainSlider.value) / 100;
+      rainMat.opacity = rainIntensity * 0.6;
+      const positions = rainGeo.attributes.position.array;
+      for (let i = 0; i < rainCount; i++) {
+        positions[i * 3 + 1] -= rainVelocities[i] * (1 + speed);
+        if (positions[i * 3 + 1] < 0) {
+          positions[i * 3 + 1] = 50 + Math.random() * 10;
+          positions[i * 3] = (Math.random() - 0.5) * 80;
+        }
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+
+      // Wet road reflection intensity based on rain
+      reflectPlane.material.opacity = rainIntensity * 0.35;
+
+      // Neon intensity
+      const neonVal = parseFloat(neonSlider.value) / 100;
+      M.neonRed.emissiveIntensity = 1 + neonVal * 2;
+      M.neonBlue.emissiveIntensity = 1 + neonVal * 2;
+      M.neonPink.emissiveIntensity = 1 + neonVal * 2;
+      M.neonCyan.emissiveIntensity = 1 + neonVal * 2;
+
+      // Steam vent animation
+      for (const steam of steamVents) {
+        steam.scale.x = 0.8 + Math.sin(time * 3 + steam.position.x) * 0.3;
+        steam.scale.z = 0.8 + Math.cos(time * 2.5 + steam.position.z) * 0.3;
+        steam.material.opacity = 0.1 + Math.sin(time * 2) * 0.05;
+      }
+
+      // Chase cam (moves forward along the road)
+      if (flyCheck.checked) {
+        chaseZ -= dt * 15 * (0.5 + speed);
+        if (chaseZ < -roadLen + 100) chaseZ = 30;
+        camera.position.set(
+          4 + Math.sin(time * 0.3) * 3,
+          5 + Math.sin(time * 0.5) * 2,
+          chaseZ + 20
+        );
+        orbit.target.set(0, 2, chaseZ - 10);
+      }
+
+      orbit.update();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
