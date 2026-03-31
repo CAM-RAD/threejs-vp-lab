@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>NYC Chase v2 — VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info { position: fixed; bottom: 14px; left: 14px; color: rgba(255,255,255,0.35); font-family: monospace; font-size: 11px; z-index: 10; pointer-events: none; }
+    #controls { position: fixed; top: 14px; right: 14px; color: rgba(255,255,255,0.85); font-family: monospace; font-size: 11px; z-index: 10; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 4px; line-height: 2; }
+    #controls label { display: block; }
+    #controls input[type="range"] { width: 110px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="info">NYC Chase v2 — VP Lab v2.0</div>
+  <div id="controls">
+    <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
+    <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
+    <label>Speed <input type="range" id="spd" min="0" max="100" value="45"></label>
+    <label><input type="checkbox" id="fly" checked> Chase Cam</label>
+  </div>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    // ─── RENDERER ─────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.55;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030308);
+    scene.fog = new THREE.FogExp2(0x050510, 0.005);
+    const clock = new THREE.Clock();
+
+    const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.5, 2500);
+    camera.position.set(3, 5, 40);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 2, 0);
+
+    // ─── HELPERS ──────────────────────────────────────
+    function box(w, h, d, mat) { return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); }
+    function cyl(rt, rb, h, seg, mat) { return new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat); }
+
+    // ─── MATERIALS ────────────────────────────────────
+    const M = {
+      asphaltWet: new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.25, metalness: 0.05 }),
+      concrete:   new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 }),
+      sidewalk:   new THREE.MeshStandardMaterial({ color: 0x3a3a38, roughness: 0.85 }),
+      curb:       new THREE.MeshStandardMaterial({ color: 0x4a4a48, roughness: 0.8 }),
+      lineWhite:  new THREE.MeshStandardMaterial({ color: 0xcccccc, emissive: 0x444444, emissiveIntensity: 0.4 }),
+      lineYellow: new THREE.MeshStandardMaterial({ color: 0xccaa00, emissive: 0x665500, emissiveIntensity: 0.4 }),
+      // Buildings
+      brickDark:  new THREE.MeshStandardMaterial({ color: 0x1a1520, roughness: 0.75 }),
+      brickRed:   new THREE.MeshStandardMaterial({ color: 0x2a1818, roughness: 0.8 }),
+      brickBrown: new THREE.MeshStandardMaterial({ color: 0x221a15, roughness: 0.78 }),
+      glassBlue:  new THREE.MeshStandardMaterial({ color: 0x0a1525, roughness: 0.05, metalness: 0.5 }),
+      glassTower: new THREE.MeshStandardMaterial({ color: 0x0c1a30, roughness: 0.08, metalness: 0.6, transparent: true, opacity: 0.7 }),
+      winLit:     new THREE.MeshStandardMaterial({ color: 0xffcc66, emissive: 0xffaa33, emissiveIntensity: 0.5 }),
+      winCool:    new THREE.MeshStandardMaterial({ color: 0x88bbff, emissive: 0x4477aa, emissiveIntensity: 0.3 }),
+      winOff:     new THREE.MeshStandardMaterial({ color: 0x0a0a12, roughness: 0.3, metalness: 0.2 }),
+      metal:      new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.4, metalness: 0.8 }),
+      metalDark:  new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5, metalness: 0.7 }),
+      guardrail:  new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.5, metalness: 0.6 }),
+      // Neon
+      neonRed:    new THREE.MeshStandardMaterial({ color: 0xff0033, emissive: 0xff0033, emissiveIntensity: 2.5 }),
+      neonBlue:   new THREE.MeshStandardMaterial({ color: 0x0055ff, emissive: 0x0055ff, emissiveIntensity: 2.5 }),
+      neonPink:   new THREE.MeshStandardMaterial({ color: 0xff0088, emissive: 0xff0088, emissiveIntensity: 2.0 }),
+      neonCyan:   new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.0 }),
+      neonGreen:  new THREE.MeshStandardMaterial({ color: 0x00ff44, emissive: 0x00ff44, emissiveIntensity: 1.8 }),
+      neonYellow: new THREE.MeshStandardMaterial({ color: 0xffdd00, emissive: 0xffdd00, emissiveIntensity: 1.8 }),
+      neonWhite:  new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.2 }),
+      // Effects
+      steam:      new THREE.MeshStandardMaterial({ color: 0x999999, transparent: true, opacity: 0.12 }),
+      puddle:     new THREE.MeshStandardMaterial({ color: 0x080810, roughness: 0.02, metalness: 0.6, transparent: true, opacity: 0.4 }),
+      // Storefronts
+      shopRed:    new THREE.MeshStandardMaterial({ color: 0x661111, emissive: 0x331111, emissiveIntensity: 0.3 }),
+      shopGreen:  new THREE.MeshStandardMaterial({ color: 0x115511, emissive: 0x113311, emissiveIntensity: 0.3 }),
+      shopBlue:   new THREE.MeshStandardMaterial({ color: 0x111155, emissive: 0x111133, emissiveIntensity: 0.3 }),
+      awningRed:  new THREE.MeshStandardMaterial({ color: 0x881122, roughness: 0.9 }),
+      awningGreen:new THREE.MeshStandardMaterial({ color: 0x226633, roughness: 0.9 }),
+      awningBlue: new THREE.MeshStandardMaterial({ color: 0x224488, roughness: 0.9 }),
+    };
+
+    // ─── ROAD (4-lane highway) ────────────────────────
+    const RL = 800; // road length
+
+    const road = box(24, 0.1, RL, M.asphaltWet);
+    road.position.set(0, 0, -RL / 2 + 50);
+    road.receiveShadow = true;
+    scene.add(road);
+
+    // Wet reflection layer
+    const reflectPlane = box(24, 0.01, RL, M.puddle);
+    reflectPlane.position.set(0, 0.07, -RL / 2 + 50);
+    scene.add(reflectPlane);
+
+    // Center double yellow
+    for (let z = -RL + 50; z < 60; z += 8) {
+      scene.add(Object.assign(box(0.12, 0.11, 5, M.lineYellow), { position: new THREE.Vector3(-0.25, 0.06, z) }));
+      scene.add(Object.assign(box(0.12, 0.11, 5, M.lineYellow), { position: new THREE.Vector3(0.25, 0.06, z) }));
+    }
+    // Lane dashes (4 lanes: -9, -3, 3, 9 centers — dashes at -6, 6)
+    for (let lane of [-6, 6]) {
+      for (let z = -RL + 50; z < 60; z += 14) {
+        scene.add(Object.assign(box(0.1, 0.11, 4.5, M.lineWhite), { position: new THREE.Vector3(lane, 0.06, z) }));
+      }
+    }
+    // Edge lines
+    for (let side of [-11.8, 11.8]) {
+      scene.add(Object.assign(box(0.12, 0.11, RL, M.lineWhite), { position: new THREE.Vector3(side, 0.06, -RL/2+50) }));
+    }
+
+    // Crosswalks every 120 units
+    for (let cz = -RL + 100; cz < 30; cz += 120) {
+      for (let i = -10; i <= 10; i += 2.5) {
+        const stripe = box(1.8, 0.11, 0.5, M.lineWhite);
+        stripe.position.set(i, 0.06, cz);
+        scene.add(stripe);
+      }
+    }
+
+    // ─── SIDEWALKS & CURBS ────────────────────────────
+    for (let side of [-1, 1]) {
+      const curb = box(0.4, 0.25, RL, M.curb);
+      curb.position.set(side * 12.2, 0.13, -RL/2+50);
+      scene.add(curb);
+      const walk = box(8, 0.15, RL, M.sidewalk);
+      walk.position.set(side * 16.5, 0.08, -RL/2+50);
+      walk.receiveShadow = true;
+      scene.add(walk);
+    }
+
+    // ─── BUILDINGS (detailed NYC) ─────────────────────
+    function addBuilding(x, z, w, d, h, mat, opts = {}) {
+      const g = new THREE.Group();
+
+      // Main body
+      const body = box(w, h, d, mat);
+      body.position.y = h / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      g.add(body);
+
+      // Cornice / ledge at top
+      const cornice = box(w + 0.4, 0.5, d + 0.4, M.concrete);
+      cornice.position.y = h;
+      g.add(cornice);
+
+      // Base / ground floor storefront (different material)
+      const storeH = 4.5;
+      if (!opts.noStore) {
+        const storeMats = [M.shopRed, M.shopGreen, M.shopBlue];
+        const storeMat = storeMats[Math.floor(Math.random() * 3)];
+        const store = box(w + 0.1, storeH, d + 0.1, storeMat);
+        store.position.y = storeH / 2;
+        g.add(store);
+
+        // Awning
+        const awningMats = [M.awningRed, M.awningGreen, M.awningBlue];
+        const awning = box(w * 0.8, 0.1, 2, awningMats[Math.floor(Math.random() * 3)]);
+        awning.position.set(0, storeH, (x > 0 ? -d/2 - 1 : d/2 + 1));
+        awning.rotation.x = x > 0 ? 0.15 : -0.15;
+        g.add(awning);
+
+        // Store window (large, lit)
+        const storeWin = box(w * 0.7, 2.5, 0.12, Math.random() > 0.3 ? M.winLit : M.winCool);
+        storeWin.position.set(0, 2.5, (x > 0 ? -d/2 - 0.06 : d/2 + 0.06));
+        g.add(storeWin);
+      }
+
+      // Window grid on face
+      const facing = x > 0 ? -1 : 1;
+      const floors = Math.floor((h - storeH) / 3.5);
+      const cols = Math.max(1, Math.floor(w / 2.5));
+      for (let f = 0; f < floors; f++) {
+        for (let c = 0; c < cols; c++) {
+          const lit = Math.random();
+          const winMat = lit > 0.55 ? M.winLit : lit > 0.35 ? M.winCool : M.winOff;
+          const win = box(1.2, 1.8, 0.08, winMat);
+          win.position.set(
+            -w/2 + 1.2 + c * (w - 2) / Math.max(cols - 1, 1),
+            storeH + 2 + f * 3.5,
+            facing * (d/2 + 0.04)
+          );
+          g.add(win);
+        }
+      }
+
+      // Floor ledges every 4 floors
+      for (let fl = 4; fl < floors; fl += 4) {
+        const ledge = box(w + 0.3, 0.2, d + 0.3, M.concrete);
+        ledge.position.y = storeH + fl * 3.5;
+        g.add(ledge);
+      }
+
+      // Fire escape (random, on facing side)
+      if (Math.random() > 0.5 && h > 20) {
+        for (let fe = 1; fe < Math.min(floors, 8); fe++) {
+          const platform = box(2.5, 0.08, 1.5, M.metalDark);
+          platform.position.set(w * 0.2, storeH + 1 + fe * 3.5, facing * (d/2 + 0.8));
+          g.add(platform);
+          const rail = box(2.5, 0.8, 0.05, M.metalDark);
+          rail.position.set(w * 0.2, storeH + 1.5 + fe * 3.5, facing * (d/2 + 1.5));
+          g.add(rail);
+          // Ladder
+          if (fe < floors - 1) {
+            const ladder = box(0.05, 3.5, 0.4, M.metalDark);
+            ladder.position.set(w * 0.2 + 1, storeH + 2.8 + fe * 3.5, facing * (d/2 + 0.8));
+            g.add(ladder);
+          }
+        }
+      }
+
+      // Rooftop elements
+      if (h > 30) {
+        // Water tower
+        if (Math.random() > 0.6) {
+          const wtank = cyl(1.5, 1.5, 2.5, 8, M.metal);
+          wtank.position.set(w * 0.2, h + 3, 0);
+          g.add(wtank);
+          const wtroof = cyl(1.8, 1.8, 0.2, 8, M.metalDark);
+          wtroof.position.set(w * 0.2, h + 4.3, 0);
+          g.add(wtroof);
+          // Legs
+          for (let l = 0; l < 4; l++) {
+            const leg = box(0.1, 2, 0.1, M.metalDark);
+            const lx = Math.cos(l * Math.PI/2) * 1.2;
+            const lz = Math.sin(l * Math.PI/2) * 1.2;
+            leg.position.set(w * 0.2 + lx, h + 1, lz);
+            g.add(leg);
+          }
+        }
+        // AC units
+        for (let a = 0; a < 2 + Math.floor(Math.random() * 3); a++) {
+          const ac = box(1 + Math.random(), 0.8, 1 + Math.random(), M.metalDark);
+          ac.position.set(-w/2 + 1 + Math.random() * (w - 2), h + 0.4, -d/2 + 1 + Math.random() * (d - 2));
+          g.add(ac);
+        }
+      }
+
+      g.position.set(x, 0, z);
+      scene.add(g);
+      return g;
+    }
+
+    // Left side — mix of heights/styles
+    const brickMats = [M.brickDark, M.brickRed, M.brickBrown];
+    for (let z = -RL + 50; z < 50; z += 18 + Math.random() * 8) {
+      const h = 20 + Math.random() * 70;
+      const w = 12 + Math.random() * 8;
+      const d = 10 + Math.random() * 6;
+      addBuilding(-21 - d/2, z, w, d, h, brickMats[Math.floor(Math.random() * 3)]);
+    }
+    // Right side
+    for (let z = -RL + 55; z < 50; z += 16 + Math.random() * 10) {
+      const h = 18 + Math.random() * 75;
+      const w = 11 + Math.random() * 10;
+      const d = 9 + Math.random() * 7;
+      addBuilding(21 + d/2, z, w, d, h, brickMats[Math.floor(Math.random() * 3)]);
+    }
+
+    // Glass towers (second row, much taller)
+    for (let z = -RL + 80; z < 30; z += 40 + Math.random() * 20) {
+      const h = 80 + Math.random() * 120;
+      addBuilding(-48 - Math.random() * 15, z, 18, 14, h, M.glassTower, { noStore: true });
+      addBuilding(48 + Math.random() * 15, z + 20, 18, 14, h * 0.9, M.glassTower, { noStore: true });
+    }
+
+    // ─── NEON SIGNS ───────────────────────────────────
+    const neonMats = [M.neonRed, M.neonBlue, M.neonPink, M.neonCyan, M.neonGreen, M.neonYellow];
+    const neonLights = [];
+
+    function addNeon(x, y, z, w, h, mat, rotY) {
+      const sign = box(w, h, 0.08, mat);
+      sign.position.set(x, y, z);
+      sign.rotation.y = rotY || 0;
+      scene.add(sign);
+      // Backing plate
+      const back = box(w + 0.4, h + 0.3, 0.05, M.metalDark);
+      back.position.set(x, y, z - (rotY ? 0 : 0.05));
+      back.rotation.y = rotY || 0;
+      scene.add(back);
+      const gl = new THREE.PointLight(mat.emissive.getHex(), 2, 20, 2);
+      gl.position.set(x + (rotY ? 0 : 0.5), y, z + (rotY === Math.PI ? -1 : 1));
+      scene.add(gl);
+      neonLights.push(gl);
+    }
+
+    for (let z = -RL + 70; z < 40; z += 35 + Math.random() * 25) {
+      const mat = neonMats[Math.floor(Math.random() * neonMats.length)];
+      addNeon(-20.5, 10 + Math.random() * 15, z, 3 + Math.random() * 4, 1 + Math.random(), mat, 0);
+      const mat2 = neonMats[Math.floor(Math.random() * neonMats.length)];
+      addNeon(20.5, 8 + Math.random() * 18, z + 15, 3 + Math.random() * 5, 1 + Math.random() * 1.5, mat2, Math.PI);
+    }
+
+    // ─── STREETLIGHTS ─────────────────────────────────
+    function addStreetLight(x, z, side) {
+      const pole = cyl(0.12, 0.15, 9, 6, M.metal);
+      pole.position.set(x, 4.5, z);
+      scene.add(pole);
+      const arm = box(3.5 * side, 0.08, 0.08, M.metal);
+      arm.position.set(x + side * 1.75, 9, z);
+      scene.add(arm);
+      const fixture = box(1.5, 0.2, 0.5, M.metalDark);
+      fixture.position.set(x + side * 3.2, 8.85, z);
+      scene.add(fixture);
+      const bulb = box(1.0, 0.06, 0.35, M.neonWhite);
+      bulb.position.set(x + side * 3.2, 8.7, z);
+      scene.add(bulb);
+      const light = new THREE.SpotLight(0xffeebb, 4, 30, Math.PI / 3.5, 0.5, 1.8);
+      light.position.set(x + side * 3.2, 8.7, z);
+      light.target.position.set(x + side * 1.5, 0, z);
+      scene.add(light); scene.add(light.target);
+    }
+
+    for (let z = -RL + 60; z < 50; z += 25) {
+      addStreetLight(-13, z, 1);
+      addStreetLight(13, z + 12, -1);
+    }
+
+    // ─── OBJAVERSE ASSETS ─────────────────────────────
+    const loader = new GLTFLoader();
+    const A = '../../assets/nyc/';
+
+    function place(file, x, y, z, h, ry) {
+      loader.load(A + file, (gltf) => {
+        const m = gltf.scene;
+        const bb = new THREE.Box3().setFromObject(m);
+        const sz = new THREE.Vector3(); bb.getSize(sz);
+        const s = h / Math.max(sz.y, 0.01);
+        m.scale.setScalar(s);
+        const bb2 = new THREE.Box3().setFromObject(m);
+        m.position.set(x, y - bb2.min.y, z);
+        m.rotation.y = ry || 0;
+        m.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+        scene.add(m);
+      });
+    }
+
+    // === CHASE VEHICLES (all heading forward = negative Z) ===
+    // Lead car — sports car being chased
+    place('retro-futuristic-coupe (FIXED) virtual.glb', 3, 0.05, -5, 1.4, Math.PI);
+
+    // Police pursuit — 2 cruisers behind
+    place('Police Car.glb', -4, 0.05, 25, 1.5, Math.PI);
+    place('Police Car.glb', 5, 0.05, 40, 1.5, Math.PI);
+
+    // Fire engine responding
+    place('Fire Engine Low Poly.glb', -8, 0.05, 55, 2.8, Math.PI);
+
+    // === ONCOMING TRAFFIC (heading toward camera = positive Z) ===
+    place('Chevvy Final.glb', -9, 0.05, -40, 1.5, 0);
+    place('gibrissan.glb', -3, 0.05, -80, 1.5, 0);
+    place('Car.glb', -8, 0.05, -140, 1.4, 0);
+    place('wdm.glb', -4, 0.05, -200, 1.5, 0);
+    place('Chevvy Final.glb', -9, 0.05, -270, 1.5, 0);
+    place('Car.glb', -3, 0.05, -340, 1.4, 0);
+    place('gibrissan.glb', -8, 0.05, -420, 1.5, 0);
+
+    // === SAME DIRECTION TRAFFIC (ahead of chase) ===
+    place('Custom Pickup.glb', 8, 0.05, -30, 1.8, Math.PI);
+    place('Garbage Truck.glb', 4, 0.05, -70, 2.8, Math.PI);
+    place('KAMAZ.glb', 8, 0.05, -120, 3.0, Math.PI);
+    place('HCR2 Super Diesel.glb', 3, 0.05, -170, 1.8, Math.PI);
+    place('wdm.glb', 7, 0.05, -230, 1.5, Math.PI);
+    place('Chevvy Final.glb', 4, 0.05, -300, 1.5, Math.PI);
+    place('FFX Runner - Playable Car.glb', 8, 0.05, -380, 1.5, Math.PI);
+    place('Car.glb', 3, 0.05, -450, 1.4, Math.PI);
+
+    // Ambulance swerving
+    place('Retextured M725 Military Ambulance.glb', 1, 0.05, -260, 2.2, Math.PI + 0.15);
+
+    // Motorcycle weaving
+    place('HCR2 Chopper.glb', 1, 0.05, -15, 1.2, Math.PI + 0.2);
+    place('HCR2 Chopper.glb', 6, 0.05, -55, 1.2, Math.PI - 0.15);
+
+    // === PARKED CARS (sidewalk) ===
+    for (let z = -RL + 60; z < 40; z += 30 + Math.random() * 20) {
+      const cars = ['gibrissan.glb','wdm.glb','Chevvy Final.glb','Car.glb','FFX Runner - Playable Car.glb'];
+      const car = cars[Math.floor(Math.random() * cars.length)];
+      place(car, -14, 0.15, z, 1.5, Math.PI / 2 + (Math.random() - 0.5) * 0.1);
+      place(cars[Math.floor(Math.random() * cars.length)], 14, 0.15, z + 15, 1.5, -Math.PI / 2 + (Math.random() - 0.5) * 0.1);
+    }
+
+    // === STREET PROPS ===
+    // Traffic lights at crosswalks
+    for (let cz = -RL + 100; cz < 30; cz += 120) {
+      place('Traffic Light.glb', -13, 0.15, cz + 2, 5, 0);
+      place('Traffic Light.glb', 13, 0.15, cz - 2, 5, Math.PI);
+    }
+
+    // Fire hydrants
+    for (let z = -RL + 80; z < 40; z += 80) {
+      place('Hydrant low poly.glb', -14.5, 0.15, z, 0.7, Math.random());
+      place('Hydrant low poly.glb', 14.5, 0.15, z + 40, 0.7, Math.random());
+    }
+
+    // Dumpsters in alleys
+    for (let z = -RL + 70; z < 40; z += 100) {
+      place('Dumpster.glb', -19, 0.15, z, 1.5, 0.3);
+      place('Dumpster.glb', 19, 0.15, z + 50, 1.5, -0.2);
+    }
+
+    // Benches on sidewalks
+    for (let z = -RL + 90; z < 30; z += 60) {
+      place('Bench.glb', -15.5, 0.15, z, 0.9, Math.PI / 2);
+      place('Bench.glb', 15.5, 0.15, z + 30, 0.9, -Math.PI / 2);
+    }
+
+    // Trash cans
+    for (let z = -RL + 65; z < 40; z += 40) {
+      place('Trash Can. Low Poly.glb', -13.5, 0.15, z, 1.0, 0);
+      place('Trash Can. Low Poly.glb', 13.5, 0.15, z + 20, 1.0, 0);
+    }
+
+    // Parking meters
+    for (let z = -RL + 75; z < 40; z += 50) {
+      place('Parking Meter.glb', -13, 0.15, z, 1.4, 0);
+      place('Parking Meter.glb', 13, 0.15, z + 25, 1.4, Math.PI);
+    }
+
+    // Stop signs
+    place('Rusty Stop Sign.glb', -13.5, 0.15, -100, 2.5, 0);
+    place('Rusty Stop Sign.glb', 13.5, 0.15, -220, 2.5, Math.PI);
+    place('Rusty Stop Sign.glb', -13.5, 0.15, -400, 2.5, 0);
+
+    // Street lanterns (decorative)
+    for (let z = -RL + 60; z < 40; z += 70) {
+      place('Street lantern.glb', -15, 0.15, z, 4, 0);
+      place('Street lantern.glb', 15, 0.15, z + 35, 4, 0);
+    }
+
+    // Traffic cones (construction zone)
+    for (let i = 0; i < 10; i++) {
+      place('Traffic Cone  Low-Poly 3D Model.glb',
+        -10 + i * 2.2, 0.05, -290 + (Math.random()-0.5) * 2,
+        0.7, Math.random() * 0.3);
+    }
+    place('Dirty cone.glb', 3, 0.05, -285, 0.7, 1.3);
+    place('Dirty cone.glb', -1, 0.05, -292, 0.7, -0.9);
+
+    // ─── PUDDLES ──────────────────────────────────────
+    for (let z = -RL + 80; z < 40; z += 50 + Math.random() * 40) {
+      const p = new THREE.Mesh(
+        new THREE.CircleGeometry(1.5 + Math.random() * 2, 16),
+        M.puddle
+      );
+      p.rotation.x = -Math.PI / 2;
+      p.position.set((Math.random() - 0.5) * 18, 0.07, z);
+      scene.add(p);
+    }
+
+    // ─── STEAM VENTS ──────────────────────────────────
+    const steamVents = [];
+    function addSteam(x, z) {
+      const vent = cyl(0.25, 0.25, 0.3, 8, M.metal);
+      vent.position.set(x, 0.15, z);
+      scene.add(vent);
+      const steam = cyl(0.6, 0.08, 3.5, 6, M.steam);
+      steam.position.set(x, 2.2, z);
+      scene.add(steam);
+      steamVents.push(steam);
+    }
+    addSteam(-7, -50); addSteam(8, -160); addSteam(-5, -280); addSteam(6, -400); addSteam(-3, -520);
+
+    // ─── POLICE LIGHTS ────────────────────────────────
+    const pL1R = new THREE.PointLight(0xff0000, 8, 40, 2); pL1R.position.set(-4, 2.2, 25); scene.add(pL1R);
+    const pL1B = new THREE.PointLight(0x0044ff, 8, 40, 2); pL1B.position.set(-4, 2.2, 25); scene.add(pL1B);
+    const pL2R = new THREE.PointLight(0xff0000, 6, 35, 2); pL2R.position.set(5, 2.2, 40); scene.add(pL2R);
+    const pL2B = new THREE.PointLight(0x0044ff, 6, 35, 2); pL2B.position.set(5, 2.2, 40); scene.add(pL2B);
+
+    // Headlights on chase car
+    for (let hx of [2, 4]) {
+      const hl = new THREE.SpotLight(0xffeedd, 10, 80, Math.PI / 7, 0.3, 1.5);
+      hl.position.set(hx, 0.8, -5);
+      hl.target.position.set(hx, 0, -30);
+      scene.add(hl); scene.add(hl.target);
+    }
+
+    // ─── RAIN ─────────────────────────────────────────
+    const RC = 12000;
+    const rainGeo = new THREE.BufferGeometry();
+    const rp = new Float32Array(RC * 3), rv = new Float32Array(RC);
+    for (let i = 0; i < RC; i++) {
+      rp[i*3] = (Math.random()-0.5) * 100;
+      rp[i*3+1] = Math.random() * 70;
+      rp[i*3+2] = Math.random() * RL - RL + 50;
+      rv[i] = 0.6 + Math.random() * 1.2;
+    }
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(rp, 3));
+    const rainMat = new THREE.PointsMaterial({ color: 0x8888bb, size: 0.06, transparent: true, opacity: 0.5 });
+    scene.add(new THREE.Points(rainGeo, rainMat));
+
+    // ─── AMBIENT LIGHTING ─────────────────────────────
+    scene.add(new THREE.AmbientLight(0x111122, 0.25));
+    scene.add(new THREE.HemisphereLight(0x0a0a1a, 0x000000, 0.15));
+    const moon = new THREE.DirectionalLight(0x223344, 0.3);
+    moon.position.set(30, 80, 50);
+    moon.castShadow = true;
+    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.camera.left = -80; moon.shadow.camera.right = 80;
+    moon.shadow.camera.top = 80; moon.shadow.camera.bottom = -80;
+    moon.shadow.camera.far = 250;
+    moon.shadow.bias = -0.001;
+    scene.add(moon);
+
+    // ─── CONTROLS & ANIMATION ─────────────────────────
+    const rainSlider = document.getElementById('rain');
+    const neonSlider = document.getElementById('neon');
+    const spdSlider = document.getElementById('spd');
+    const flyCheck = document.getElementById('fly');
+    let chaseZ = 35;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const t = clock.getElapsedTime();
+      const speed = parseFloat(spdSlider.value) / 100;
+
+      // Police flash
+      const flash = Math.sin(t * 14);
+      pL1R.intensity = flash > 0 ? 12 : 0;
+      pL1B.intensity = flash > 0 ? 0 : 12;
+      pL2R.intensity = flash > 0.15 ? 10 : 0;
+      pL2B.intensity = flash > 0.15 ? 0 : 10;
+
+      // Rain
+      const ri = parseFloat(rainSlider.value) / 100;
+      rainMat.opacity = ri * 0.55;
+      const pos = rainGeo.attributes.position.array;
+      for (let i = 0; i < RC; i++) {
+        pos[i*3+1] -= rv[i] * (1 + speed);
+        if (pos[i*3+1] < 0) { pos[i*3+1] = 60 + Math.random() * 10; pos[i*3] = (Math.random()-0.5) * 100; }
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+      reflectPlane.material.opacity = ri * 0.4;
+
+      // Neon
+      const ni = parseFloat(neonSlider.value) / 100;
+      for (const mat of [M.neonRed, M.neonBlue, M.neonPink, M.neonCyan, M.neonGreen, M.neonYellow]) {
+        mat.emissiveIntensity = 1 + ni * 2.5;
+      }
+      for (const nl of neonLights) nl.intensity = 1 + ni * 3;
+
+      // Steam
+      for (const s of steamVents) {
+        s.scale.x = 0.7 + Math.sin(t * 3 + s.position.x) * 0.4;
+        s.scale.z = 0.7 + Math.cos(t * 2.5 + s.position.z) * 0.4;
+        s.material.opacity = 0.08 + Math.sin(t * 2) * 0.04 + ri * 0.04;
+      }
+
+      // Chase cam
+      if (flyCheck.checked) {
+        chaseZ -= dt * 18 * (0.4 + speed);
+        if (chaseZ < -RL + 120) chaseZ = 35;
+        camera.position.set(
+          3 + Math.sin(t * 0.4) * 2.5,
+          3.5 + Math.sin(t * 0.6) * 1.5,
+          chaseZ + 18
+        );
+        orbit.target.set(0, 1.5, chaseZ - 8);
+      }
+
+      orbit.update();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
