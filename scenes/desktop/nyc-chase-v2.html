@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="info">NYC Chase v2 — VP Lab v2.0</div>
+  <div id="info">NYC Chase v2 — VP Lab v2.1</div>
   <div id="controls">
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
@@ -43,7 +43,7 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.55;
+    renderer.toneMappingExposure = 0.75;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -117,18 +117,18 @@
 
     // Center double yellow
     for (let z = -RL + 50; z < 60; z += 8) {
-      scene.add(Object.assign(box(0.12, 0.11, 5, M.lineYellow), { position: new THREE.Vector3(-0.25, 0.06, z) }));
-      scene.add(Object.assign(box(0.12, 0.11, 5, M.lineYellow), { position: new THREE.Vector3(0.25, 0.06, z) }));
+      const yl1 = box(0.12, 0.11, 5, M.lineYellow); yl1.position.set(-0.25, 0.06, z); scene.add(yl1);
+      const yl2 = box(0.12, 0.11, 5, M.lineYellow); yl2.position.set(0.25, 0.06, z); scene.add(yl2);
     }
     // Lane dashes (4 lanes: -9, -3, 3, 9 centers — dashes at -6, 6)
     for (let lane of [-6, 6]) {
       for (let z = -RL + 50; z < 60; z += 14) {
-        scene.add(Object.assign(box(0.1, 0.11, 4.5, M.lineWhite), { position: new THREE.Vector3(lane, 0.06, z) }));
+        const ld = box(0.1, 0.11, 4.5, M.lineWhite); ld.position.set(lane, 0.06, z); scene.add(ld);
       }
     }
     // Edge lines
     for (let side of [-11.8, 11.8]) {
-      scene.add(Object.assign(box(0.12, 0.11, RL, M.lineWhite), { position: new THREE.Vector3(side, 0.06, -RL/2+50) }));
+      const el = box(0.12, 0.11, RL, M.lineWhite); el.position.set(side, 0.06, -RL/2+50); scene.add(el);
     }
 
     // Crosswalks every 120 units
@@ -189,17 +189,17 @@
         g.add(storeWin);
       }
 
-      // Window grid on face
+      // Window grid on face (every other floor for perf)
       const facing = x > 0 ? -1 : 1;
       const floors = Math.floor((h - storeH) / 3.5);
-      const cols = Math.max(1, Math.floor(w / 2.5));
-      for (let f = 0; f < floors; f++) {
+      const cols = Math.max(1, Math.floor(w / 3.5));
+      for (let f = 0; f < floors; f += 2) {
         for (let c = 0; c < cols; c++) {
           const lit = Math.random();
           const winMat = lit > 0.55 ? M.winLit : lit > 0.35 ? M.winCool : M.winOff;
-          const win = box(1.2, 1.8, 0.08, winMat);
+          const win = box(1.8, 3.2, 0.08, winMat);
           win.position.set(
-            -w/2 + 1.2 + c * (w - 2) / Math.max(cols - 1, 1),
+            -w/2 + 1.8 + c * (w - 3) / Math.max(cols - 1, 1),
             storeH + 2 + f * 3.5,
             facing * (d/2 + 0.04)
           );
@@ -360,7 +360,7 @@
 
     // === CHASE VEHICLES (all heading forward = negative Z) ===
     // Lead car — sports car being chased
-    place('retro-futuristic-coupe (FIXED) virtual.glb', 3, 0.05, -5, 1.4, Math.PI);
+    place('retro-futuristic-coupe _FIXED_ virtual.glb', 3, 0.05, -5, 1.4, Math.PI);
 
     // Police pursuit — 2 cruisers behind
     place('Police Car.glb', -4, 0.05, 25, 1.5, Math.PI);
@@ -430,8 +430,8 @@
 
     // Trash cans
     for (let z = -RL + 65; z < 40; z += 40) {
-      place('Trash Can. Low Poly.glb', -13.5, 0.15, z, 1.0, 0);
-      place('Trash Can. Low Poly.glb', 13.5, 0.15, z + 20, 1.0, 0);
+      place('Trash Can_ Low Poly.glb', -13.5, 0.15, z, 1.0, 0);
+      place('Trash Can_ Low Poly.glb', 13.5, 0.15, z + 20, 1.0, 0);
     }
 
     // Parking meters
@@ -513,8 +513,8 @@
     scene.add(new THREE.Points(rainGeo, rainMat));
 
     // ─── AMBIENT LIGHTING ─────────────────────────────
-    scene.add(new THREE.AmbientLight(0x111122, 0.25));
-    scene.add(new THREE.HemisphereLight(0x0a0a1a, 0x000000, 0.15));
+    scene.add(new THREE.AmbientLight(0x1a1a33, 0.4));
+    scene.add(new THREE.HemisphereLight(0x151530, 0x050508, 0.25));
     const moon = new THREE.DirectionalLight(0x223344, 0.3);
     moon.position.set(30, 80, 50);
     moon.castShadow = true;
