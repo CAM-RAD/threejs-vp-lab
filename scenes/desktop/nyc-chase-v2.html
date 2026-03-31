@@ -19,6 +19,8 @@
     #bar-wrap { width: 320px; height: 4px; background: #1a1a2a; border-radius: 2px; overflow: hidden; }
     #bar-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #ff0055, #0088ff); transition: width 0.15s; }
     #load-text { margin-top: 16px; font-size: 11px; color: #555; }
+    #skip-btn { margin-top: 24px; padding: 8px 24px; background: none; border: 1px solid #333; color: #666; font-family: monospace; font-size: 11px; cursor: pointer; border-radius: 3px; display: none; }
+    #skip-btn:hover { border-color: #0088ff; color: #aaa; }
   </style>
 </head>
 <body>
@@ -27,8 +29,9 @@
     <div class="sub">Virtual Production Lab</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
+    <button id="skip-btn" onclick="document.getElementById('skip-btn').dataset.clicked='1'">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase v2 — VP Lab v2.3</div>
+  <div id="info">NYC Chase v2 — VP Lab v2.4</div>
   <div id="controls">
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
@@ -383,8 +386,12 @@
         let resolved = false;
         const done = () => { if (!resolved) { resolved = true; resolve(); } };
         if (total === 0) { done(); return; }
-        // Timeout fallback — start scene after 20s even if some models fail
-        setTimeout(() => { loadText.textContent = 'Starting scene...'; done(); }, 20000);
+        // Show skip button after 5 seconds
+        const skipBtn = document.getElementById('skip-btn');
+        setTimeout(() => { skipBtn.style.display = 'inline-block'; }, 5000);
+        skipBtn.addEventListener('click', () => { loadText.textContent = 'Starting scene...'; done(); });
+        // Timeout fallback — start scene after 10s even if some models fail
+        setTimeout(() => { loadText.textContent = 'Starting scene...'; done(); }, 10000);
         MODEL_FILES.forEach(file => {
           loadText.textContent = `Loading ${file.split('.')[0]}...`;
           loader.load(A + file, (gltf) => {
