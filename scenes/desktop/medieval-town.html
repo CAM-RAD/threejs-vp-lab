@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="info">Medieval Town — VP Lab v2.1</div>
+  <div id="info">Medieval Town — VP Lab v2.2</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="65"></label>
     <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
@@ -642,11 +642,21 @@
     const loader = new GLTFLoader();
     const ASSET_BASE = '../../assets/medieval/';
 
-    function placeModel(file, x, y, z, scale, rotY) {
+    // targetH = desired height in scene units. Auto-scales model to fit.
+    function placeModel(file, x, y, z, targetH, rotY) {
       loader.load(ASSET_BASE + file, (gltf) => {
         const model = gltf.scene;
-        model.position.set(x, y, z);
-        model.scale.setScalar(scale);
+        // Compute bounding box and auto-scale to target height
+        const bbox = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        const nativeH = Math.max(size.y, 0.01);
+        const s = targetH / nativeH;
+        model.scale.setScalar(s);
+        // Recompute after scale to sit on ground properly
+        const bboxScaled = new THREE.Box3().setFromObject(model);
+        const yOffset = -bboxScaled.min.y;
+        model.position.set(x, y + yOffset, z);
         model.rotation.y = rotY || 0;
         model.traverse(child => {
           if (child.isMesh) {
@@ -658,38 +668,40 @@
       });
     }
 
-    // Windmill on a hill in the background
-    placeModel('Windmill.glb', -50, 3, -55, 4, 0.5);
+    // targetH = desired height in scene units (buildings are ~7-12 tall)
+
+    // Windmill on a hill in the background (tall landmark)
+    placeModel('Windmill.glb', -50, 3, -55, 15, 0.5);
 
     // Mill tower on the other side
-    placeModel('mill tower.glb', 50, 0, -50, 3, -0.3);
+    placeModel('mill tower.glb', 50, 0, -50, 12, -0.3);
 
-    // Barrels scattered around market / buildings (replacing some procedural ones)
-    placeModel('Barrel.glb', -16, 0, 13, 1.2, 0);
-    placeModel('Barrel.glb', -15, 0, 12, 1.2, 0.8);
-    placeModel('Barrel Textured.glb', 18, 0, 11, 1.5, 0.3);
-    placeModel('Barrel Textured.glb', 17, 0, 10, 1.5, -0.5);
-    placeModel('Stylized Barrel.glb', -7, 0, -17, 1.0, 0.2);
-    placeModel('Stylized Barrel.glb', 9, 0, -13, 1.0, 1.2);
+    // Barrels scattered around market / buildings (~1 unit tall)
+    placeModel('Barrel.glb', -16, 0, 13, 1.0, 0);
+    placeModel('Barrel.glb', -15, 0, 12, 1.0, 0.8);
+    placeModel('Barrel Textured.glb', 18, 0, 11, 1.0, 0.3);
+    placeModel('Barrel Textured.glb', 17, 0, 10, 0.9, -0.5);
+    placeModel('Stylized Barrel.glb', -7, 0, -17, 1.1, 0.2);
+    placeModel('Stylized Barrel.glb', 9, 0, -13, 1.1, 1.2);
 
-    // Lanterns hanging around the town
-    placeModel('Lantern.glb', -5, 3.5, 1, 1.5, 0);
-    placeModel('Lantern.glb', 6, 3.5, 1, 1.5, 0.5);
-    placeModel('Lantern.glb', -13, 5.5, 13, 1.5, 0.3);
-    placeModel('Lantern.glb', 14, 5.5, 11, 1.5, -0.2);
+    // Lanterns around the town (~0.6 units tall, placed at height)
+    placeModel('Lantern.glb', -5, 3.5, 1, 0.6, 0);
+    placeModel('Lantern.glb', 6, 3.5, 1, 0.6, 0.5);
+    placeModel('Lantern.glb', -13, 5.5, 13, 0.6, 0.3);
+    placeModel('Lantern.glb', 14, 5.5, 11, 0.6, -0.2);
 
-    // Swords displayed at blacksmith / weapon rack near market
-    placeModel('Steel Sword.glb', -12, 1.5, 3, 1.5, 0.8);
-    placeModel('Steel Sword.glb', -12.3, 1.5, 3.3, 1.5, 1.0);
+    // Swords displayed at blacksmith (~1.2 units tall)
+    placeModel('Steel Sword.glb', -12, 1.5, 3, 1.2, 0.8);
+    placeModel('Steel Sword.glb', -12.3, 1.5, 3.3, 1.2, 1.0);
 
-    // Shields on walls / displayed at stalls
-    placeModel('Viking Shield.glb', 13, 2.5, -5, 1.0, -0.4);
-    placeModel('Weapons Series_ Hyrulean Shield.glb', -21.5, 3, -2, 1.0, 0.5);
+    // Shields on walls (~0.8 units tall)
+    placeModel('Viking Shield.glb', 13, 2.5, -5, 0.8, -0.4);
+    placeModel('Weapons Series_ Hyrulean Shield.glb', -21.5, 3, -2, 0.8, 0.5);
 
-    // Horses near the square
-    placeModel('Horse _MedievalFantasyAssets.glb', 15, 0, 5, 3.0, -1.2);
-    placeModel('Horse _MedievalFantasyAssets.glb', 16.5, 0, 3.5, 3.0, -0.8);
-    placeModel('Przewalski Horse Voxel.glb', -25, 0, 8, 1.5, 0.6);
+    // Horses near the square (~2 units tall)
+    placeModel('Horse _MedievalFantasyAssets.glb', 15, 0, 5, 2.0, -1.2);
+    placeModel('Horse _MedievalFantasyAssets.glb', 16.5, 0, 3.5, 2.0, -0.8);
+    placeModel('Przewalski Horse Voxel.glb', -25, 0, 8, 2.0, 0.6);
 
     // ─── EXTRA BUILDINGS (expanded town) ──────────────
     // East quarter
