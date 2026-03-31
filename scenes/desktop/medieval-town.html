@@ -16,9 +16,9 @@
   </style>
 </head>
 <body>
-  <div id="info">Medieval Town — VP Lab v2.0</div>
+  <div id="info">Medieval Town — VP Lab v2.1</div>
   <div id="controls">
-    <label>Time of Day <input type="range" id="tod" min="0" max="100" value="35"></label>
+    <label>Time of Day <input type="range" id="tod" min="0" max="100" value="65"></label>
     <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
     <label>Torch Glow <input type="range" id="torchGlow" min="0" max="100" value="70"></label>
     <label><input type="checkbox" id="fly" checked> Flythrough</label>
@@ -43,7 +43,7 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.65;
+    renderer.toneMappingExposure = 0.85;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -798,8 +798,8 @@
     scene.add(fillLight);
 
     // Ambient + hemisphere
-    scene.add(new THREE.AmbientLight(0x332244, 0.3));
-    const hemi = new THREE.HemisphereLight(0x665544, 0x222211, 0.4);
+    scene.add(new THREE.AmbientLight(0x444455, 0.5));
+    const hemi = new THREE.HemisphereLight(0x887766, 0x333322, 0.5);
     scene.add(hemi);
 
     // ─── SKY GRADIENT ─────────────────────────────────
@@ -921,7 +921,7 @@
     }
 
     // Init
-    updateSky(35);
+    updateSky(65);
     animate();
 
     window.addEventListener('resize', () => {
