@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="info">Medieval Town — VP Lab v1.1</div>
+  <div id="info">Medieval Town — VP Lab v2.0</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="35"></label>
     <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
@@ -34,6 +34,7 @@
   <script type="module">
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     // ─── SETUP ────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -48,8 +49,8 @@
     const scene = new THREE.Scene();
     const clock = new THREE.Clock();
 
-    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
-    camera.position.set(0, 12, 45);
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 3000);
+    camera.position.set(0, 14, 55);
 
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
@@ -95,7 +96,7 @@
 
     // ─── GROUND ───────────────────────────────────────
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(800, 800),
+      new THREE.PlaneGeometry(1200, 1200),
       new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 1.0 })
     );
     ground.rotation.x = -Math.PI / 2;
@@ -637,6 +638,147 @@
       addTree(i + Math.random() * 4, -80 + Math.random() * 10, 0.8 + Math.random() * 0.6);
     }
 
+    // ─── OBJAVERSE 3D ASSETS (glTF) ─────────────────────
+    const loader = new GLTFLoader();
+    const ASSET_BASE = '../../assets/medieval/';
+
+    function placeModel(file, x, y, z, scale, rotY) {
+      loader.load(ASSET_BASE + file, (gltf) => {
+        const model = gltf.scene;
+        model.position.set(x, y, z);
+        model.scale.setScalar(scale);
+        model.rotation.y = rotY || 0;
+        model.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        scene.add(model);
+      });
+    }
+
+    // Windmill on a hill in the background
+    placeModel('Windmill.glb', -50, 3, -55, 4, 0.5);
+
+    // Mill tower on the other side
+    placeModel('mill tower.glb', 50, 0, -50, 3, -0.3);
+
+    // Barrels scattered around market / buildings (replacing some procedural ones)
+    placeModel('Barrel.glb', -16, 0, 13, 1.2, 0);
+    placeModel('Barrel.glb', -15, 0, 12, 1.2, 0.8);
+    placeModel('Barrel Textured.glb', 18, 0, 11, 1.5, 0.3);
+    placeModel('Barrel Textured.glb', 17, 0, 10, 1.5, -0.5);
+    placeModel('Stylized Barrel.glb', -7, 0, -17, 1.0, 0.2);
+    placeModel('Stylized Barrel.glb', 9, 0, -13, 1.0, 1.2);
+
+    // Lanterns hanging around the town
+    placeModel('Lantern.glb', -5, 3.5, 1, 1.5, 0);
+    placeModel('Lantern.glb', 6, 3.5, 1, 1.5, 0.5);
+    placeModel('Lantern.glb', -13, 5.5, 13, 1.5, 0.3);
+    placeModel('Lantern.glb', 14, 5.5, 11, 1.5, -0.2);
+
+    // Swords displayed at blacksmith / weapon rack near market
+    placeModel('Steel Sword.glb', -12, 1.5, 3, 1.5, 0.8);
+    placeModel('Steel Sword.glb', -12.3, 1.5, 3.3, 1.5, 1.0);
+
+    // Shields on walls / displayed at stalls
+    placeModel('Viking Shield.glb', 13, 2.5, -5, 1.0, -0.4);
+    placeModel('Weapons Series_ Hyrulean Shield.glb', -21.5, 3, -2, 1.0, 0.5);
+
+    // Horses near the square
+    placeModel('Horse _MedievalFantasyAssets.glb', 15, 0, 5, 3.0, -1.2);
+    placeModel('Horse _MedievalFantasyAssets.glb', 16.5, 0, 3.5, 3.0, -0.8);
+    placeModel('Przewalski Horse Voxel.glb', -25, 0, 8, 1.5, 0.6);
+
+    // ─── EXTRA BUILDINGS (expanded town) ──────────────
+    // East quarter
+    buildHouse(42, -30, 5, 5, 8, 2, 'tile', M.plasterP, -0.6);
+    buildHouse(48, -20, 6, 5, 9, 3, 'dark', M.plaster, -0.9);
+    buildHouse(50, -8, 5, 4, 7, 2, 'slate', M.plasterW, -1.0);
+
+    // West quarter
+    buildHouse(-45, -28, 6, 5, 9, 2, 'dark', M.plaster, 0.7);
+    buildHouse(-50, -18, 5, 5, 8, 3, 'tile', M.plasterP, 0.9);
+    buildHouse(-48, -5, 5, 4, 7, 2, 'slate', M.plasterW, 1.1);
+
+    // Far back row (skyline depth)
+    buildHouse(-35, -65, 7, 6, 12, 3, 'slate', M.stoneW, 0.2);
+    buildHouse(35, -65, 6, 5, 10, 3, 'dark', M.plaster, -0.15);
+    buildHouse(-15, -70, 5, 5, 9, 2, 'tile', M.plasterP, 0.1);
+    buildHouse(15, -70, 6, 5, 8, 2, 'dark', M.plasterW, -0.1);
+
+    // Riverside houses (south side, facing camera)
+    buildHouse(-20, 25, 6, 5, 8, 2, 'tile', M.plaster, 0.2);
+    buildHouse(-8, 28, 5, 5, 7, 2, 'dark', M.plasterP, -0.1);
+    buildHouse(8, 27, 6, 5, 9, 3, 'slate', M.plasterW, 0.15);
+    buildHouse(22, 24, 5, 4, 7, 2, 'tile', M.plaster, -0.25);
+
+    // ─── RIVER (south edge) ───────────────────────────
+    const riverShape = new THREE.Shape();
+    riverShape.moveTo(-60, 0);
+    riverShape.quadraticCurveTo(-30, 4, 0, 2);
+    riverShape.quadraticCurveTo(30, 0, 60, 3);
+    riverShape.lineTo(60, -6);
+    riverShape.quadraticCurveTo(30, -6, 0, -4);
+    riverShape.quadraticCurveTo(-30, -2, -60, -6);
+    riverShape.lineTo(-60, 0);
+    const riverGeo = new THREE.ShapeGeometry(riverShape);
+    const river = new THREE.Mesh(riverGeo, M.water);
+    river.rotation.x = -Math.PI / 2;
+    river.position.set(0, 0.08, 38);
+    scene.add(river);
+
+    // ─── STONE BRIDGE ─────────────────────────────────
+    const bridgeGroup = new THREE.Group();
+    // Bridge deck
+    const deck = box(7, 0.5, 6, M.stone);
+    deck.position.y = 1.5;
+    bridgeGroup.add(deck);
+    // Arches
+    for (let bx of [-2, 2]) {
+      const archRing = new THREE.Mesh(
+        new THREE.TorusGeometry(1.8, 0.4, 6, 12, Math.PI),
+        M.stoneD
+      );
+      archRing.position.set(bx, 0.5, 0);
+      archRing.rotation.y = Math.PI / 2;
+      bridgeGroup.add(archRing);
+    }
+    // Railings
+    for (let side of [-3, 3]) {
+      const rail = box(7, 1, 0.3, M.stone);
+      rail.position.set(0, 2.25, side);
+      bridgeGroup.add(rail);
+      // Railing posts
+      for (let rp = -3; rp <= 3; rp += 1.5) {
+        const post = box(0.3, 1.3, 0.3, M.stone);
+        post.position.set(rp, 2.4, side);
+        bridgeGroup.add(post);
+      }
+    }
+    bridgeGroup.position.set(0, 0, 38);
+    scene.add(bridgeGroup);
+
+    // ─── MORE TREES (expanded) ────────────────────────
+    addTree(-55, 20, 1.1); addTree(55, 18, 0.9);
+    addTree(-40, 30, 1.3); addTree(40, 28, 1.0);
+    addTree(-15, 32, 0.8); addTree(15, 30, 0.9);
+    // Extended treeline
+    for (let i = -70; i <= 70; i += 5) {
+      addTree(i + Math.random() * 3, -90 + Math.random() * 8, 0.7 + Math.random() * 0.5);
+    }
+    // River bank trees
+    for (let i = -50; i <= 50; i += 10) {
+      addTree(i + Math.random() * 4, 42 + Math.random() * 5, 0.8 + Math.random() * 0.4);
+    }
+
+    // ─── EXTRA TORCHES (expanded town) ────────────────
+    addTorch(-45, 5, -26); addTorch(43, 5, -28);
+    addTorch(-49, 5, -16); addTorch(49, 5, -14);
+    addTorch(-20, 4, 26); addTorch(22, 4, 25);
+    addTorch(0, 2.5, 35); // On the bridge
+
     // ─── LIGHTING (cinematic VP) ──────────────────────
 
     // Key light — warm sunset from the side
@@ -644,9 +786,9 @@
     keyLight.position.set(80, 60, 40);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(2048, 2048);
-    keyLight.shadow.camera.left = -80; keyLight.shadow.camera.right = 80;
-    keyLight.shadow.camera.top = 80; keyLight.shadow.camera.bottom = -80;
-    keyLight.shadow.camera.far = 250;
+    keyLight.shadow.camera.left = -120; keyLight.shadow.camera.right = 120;
+    keyLight.shadow.camera.top = 120; keyLight.shadow.camera.bottom = -120;
+    keyLight.shadow.camera.far = 350;
     keyLight.shadow.bias = -0.001;
     scene.add(keyLight);
 
@@ -727,7 +869,7 @@
     const torchSlider = document.getElementById('torchGlow');
     const flyCheck = document.getElementById('fly');
 
-    scene.fog = new THREE.Fog(0x332244, 60, 200);
+    scene.fog = new THREE.Fog(0x332244, 80, 280);
 
     // ─── FLYTHROUGH ───────────────────────────────────
     let flyAngle = 0;
@@ -750,8 +892,8 @@
 
       // Fog
       const fogVal = parseFloat(fogSlider.value);
-      scene.fog.near = 20 + (100 - fogVal) * 1.5;
-      scene.fog.far = 80 + (100 - fogVal) * 3;
+      scene.fog.near = 30 + (100 - fogVal) * 2;
+      scene.fog.far = 100 + (100 - fogVal) * 4;
 
       // Torch flicker
       const torchVal = parseFloat(torchSlider.value) / 100;
@@ -763,9 +905,9 @@
 
       // Flythrough
       if (flyCheck.checked) {
-        flyAngle += dt * 0.06;
-        const radius = 55;
-        const height = 10 + Math.sin(flyAngle * 0.4) * 5;
+        flyAngle += dt * 0.05;
+        const radius = 70;
+        const height = 12 + Math.sin(flyAngle * 0.4) * 6;
         camera.position.set(
           Math.sin(flyAngle) * radius,
           height,
