@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="info">Medieval Town — VP Lab v2.2</div>
+  <div id="info">Medieval Town — VP Lab v2.3</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="65"></label>
     <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
@@ -112,19 +112,6 @@
     square.position.set(0, 0.05, 0);
     square.receiveShadow = true;
     scene.add(square);
-
-    // Cobble streets radiating out
-    function addStreet(x, z, w, len, rot) {
-      const s = box(w, 0.1, len, M.cobble);
-      s.position.set(x, 0.05, z);
-      s.rotation.y = rot || 0;
-      s.receiveShadow = true;
-      scene.add(s);
-    }
-    addStreet(0, -40, 8, 50, 0);
-    addStreet(0, 42, 8, 55, 0);
-    addStreet(-38, 5, 8, 50, Math.PI / 2);
-    addStreet(36, -4, 7, 46, Math.PI * 0.52);
 
     // ─── HALF-TIMBER BUILDING ─────────────────────────
     function buildHouse(x, z, w, d, h, stories, roofType, plasterMat, facingAngle) {
@@ -580,12 +567,20 @@
       torchLights.push({ light, baseIntensity: 1.5 });
     }
 
-    // Torches on buildings and around square
-    addTorch(-13.5, 4, 12.6); addTorch(13.5, 4, 10.5);
-    addTorch(-21, 5, -2); addTorch(19, 4.5, -5.5);
-    addTorch(-8.5, 5, -20); addTorch(9.5, 6, -15);
-    addTorch(-4, 3, 0.5); addTorch(5, 3, 0.5);
-    addTorch(0, 6, -70); addTorch(-15, 6, -70); addTorch(15, 6, -70);
+    // Torches mounted on building walls (matched to buildHouse positions)
+    // Front row buildings: (-14,10) and (14,8)
+    addTorch(-14, 4.5, 13); addTorch(14, 4.5, 11);
+    // Mid row: (-22,-5), (20,-8), (-10,-20), (10,-18)
+    addTorch(-22, 5.5, -2); addTorch(20, 4.5, -5);
+    addTorch(-10, 4.5, -17); addTorch(10, 6.5, -15);
+    // Back row: (0,-42)
+    addTorch(0, 7, -38);
+    // Side buildings: (-35,5), (35,2)
+    addTorch(-35, 4.5, 7); addTorch(35, 4.5, 4);
+    // Castle wall gatehouse
+    addTorch(-3, 6, -66); addTorch(3, 6, -66);
+    // Church
+    addTorch(-8, 4, -21);
 
     // ─── HANGING SIGNS ────────────────────────────────
     function addSign(x, y, z, rot) {
@@ -785,11 +780,15 @@
       addTree(i + Math.random() * 4, 42 + Math.random() * 5, 0.8 + Math.random() * 0.4);
     }
 
-    // ─── EXTRA TORCHES (expanded town) ────────────────
-    addTorch(-45, 5, -26); addTorch(43, 5, -28);
-    addTorch(-49, 5, -16); addTorch(49, 5, -14);
-    addTorch(-20, 4, 26); addTorch(22, 4, 25);
-    addTorch(0, 2.5, 35); // On the bridge
+    // ─── EXTRA TORCHES (expanded town, on building walls) ──
+    // East quarter: (42,-30), (48,-20), (50,-8)
+    addTorch(42, 5, -27); addTorch(48, 5.5, -17);
+    // West quarter: (-45,-28), (-50,-18)
+    addTorch(-45, 5, -25); addTorch(-50, 5.5, -15);
+    // Riverside houses: (-20,25), (8,27)
+    addTorch(-20, 4.5, 28); addTorch(8, 5.5, 30);
+    // Bridge post
+    addTorch(3, 2.5, 35);
 
     // ─── LIGHTING (cinematic VP) ──────────────────────
 
