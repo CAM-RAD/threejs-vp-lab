@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <div id="info">Medieval Town — VP Lab v1.0</div>
+  <div id="info">Medieval Town — VP Lab v1.1</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="35"></label>
     <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
@@ -189,46 +189,34 @@
       topBeam.position.y = stories * storyH;
       g.add(topBeam);
 
-      // Roof
+      // Roof — solid extruded prism (visible from all angles)
       const rw = w + stories * 1.2 + 2;
       const rd = d + stories * 1.2 + 2;
       const rh = h * 0.5;
       const roofMat = roofType === 'slate' ? M.roofSlate : (roofType === 'dark' ? M.roofD : M.roof);
 
-      // Gabled roof using two planes
-      const roofSlope = Math.sqrt((rw / 2) * (rw / 2) + rh * rh);
-      const roofAngle = Math.atan2(rh, rw / 2);
+      // Create triangular cross-section and extrude along the depth
+      const roofShape = new THREE.Shape();
+      roofShape.moveTo(-rw / 2, 0);
+      roofShape.lineTo(0, rh);
+      roofShape.lineTo(rw / 2, 0);
+      roofShape.lineTo(-rw / 2, 0);
 
-      const roofGeo = new THREE.PlaneGeometry(roofSlope, rd + 0.5);
-      const r1 = new THREE.Mesh(roofGeo, roofMat);
-      r1.position.set(-rw / 4 * Math.cos(roofAngle), stories * storyH + rh / 2 + 0.15, 0);
-      r1.rotation.z = roofAngle;
-      r1.rotation.order = 'ZYX';
-      r1.castShadow = true;
-      g.add(r1);
+      const roofGeo = new THREE.ExtrudeGeometry(roofShape, {
+        depth: rd,
+        bevelEnabled: false,
+      });
 
-      const r2 = new THREE.Mesh(roofGeo, roofMat);
-      r2.position.set(rw / 4 * Math.cos(roofAngle), stories * storyH + rh / 2 + 0.15, 0);
-      r2.rotation.z = -roofAngle;
-      r2.rotation.order = 'ZYX';
-      r2.castShadow = true;
-      g.add(r2);
+      const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+      roofMesh.position.set(0, stories * storyH + 0.15, -rd / 2);
+      roofMesh.castShadow = true;
+      roofMesh.receiveShadow = true;
+      g.add(roofMesh);
 
-      // Gable ends (triangular fill)
-      const gableShape = new THREE.Shape();
-      gableShape.moveTo(-rw / 2, 0);
-      gableShape.lineTo(0, rh);
-      gableShape.lineTo(rw / 2, 0);
-      gableShape.lineTo(-rw / 2, 0);
-      const gableGeo = new THREE.ShapeGeometry(gableShape);
-
-      const gf = new THREE.Mesh(gableGeo, plasterMat);
-      gf.position.set(0, stories * storyH + 0.15, rd / 2);
-      g.add(gf);
-      const gb = new THREE.Mesh(gableGeo, plasterMat);
-      gb.position.set(0, stories * storyH + 0.15, -rd / 2);
-      gb.rotation.y = Math.PI;
-      g.add(gb);
+      // Ridge beam along the top
+      const ridge = box(0.2, 0.2, rd + 0.4, M.timber);
+      ridge.position.set(0, stories * storyH + rh + 0.15, 0);
+      g.add(ridge);
 
       // Door on ground floor
       const door = box(1.2, 2.2, 0.15, M.woodD);
