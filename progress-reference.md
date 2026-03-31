@@ -26,6 +26,7 @@ progress-reference.md
 | Alpine Highway | scenes/desktop/alpine-highway.html | — | Procedural mountains, winding road, pine trees, fog |
 | Greek City | scenes/desktop/greek-city.html | — | 3 temples, agora, shops, stoa, fountain, dock, water |
 | Greek Epic | scenes/desktop/greek-epic.html | scenes/mobile/greek-epic-mobile.html | Full city: acropolis, amphitheatre, aqueduct, walls, boats, olive groves |
+| Medieval Town | scenes/desktop/medieval-town.html | — | VP volume bg: half-timber buildings, church, castle wall, market, well, torches, dynamic sky |
 
 ## Mobile Optimization Rules (learned the hard way)
 - NO Sky shader (PMREMGenerator kills mobile GPUs)

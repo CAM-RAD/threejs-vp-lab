@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Medieval Town — VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; }
+    canvas { display: block; }
+    #info { position: fixed; bottom: 14px; left: 14px; color: rgba(255,255,255,0.45); font-family: monospace; font-size: 11px; z-index: 10; pointer-events: none; }
+    #controls { position: fixed; top: 14px; right: 14px; color: rgba(255,255,255,0.85); font-family: monospace; font-size: 11px; z-index: 10; background: rgba(0,0,0,0.55); padding: 12px; border-radius: 4px; line-height: 2; }
+    #controls label { display: block; }
+    #controls input[type="range"] { width: 110px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="info">Medieval Town — VP Lab v1.0</div>
+  <div id="controls">
+    <label>Time of Day <input type="range" id="tod" min="0" max="100" value="35"></label>
+    <label>Fog Density <input type="range" id="fogDensity" min="0" max="100" value="50"></label>
+    <label>Torch Glow <input type="range" id="torchGlow" min="0" max="100" value="70"></label>
+    <label><input type="checkbox" id="fly" checked> Flythrough</label>
+  </div>
+
+  <script type="importmap">
+  { "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }}
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ─── SETUP ────────────────────────────────────────
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.65;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const clock = new THREE.Clock();
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.set(0, 12, 45);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 8, 0);
+
+    // ─── MATERIALS ────────────────────────────────────
+    const M = {
+      plaster:  new THREE.MeshStandardMaterial({ color: 0xd4c8a8, roughness: 0.95 }),
+      plasterW: new THREE.MeshStandardMaterial({ color: 0xc8bfa0, roughness: 0.95 }),
+      plasterP: new THREE.MeshStandardMaterial({ color: 0xc4a882, roughness: 0.92 }),
+      timber:   new THREE.MeshStandardMaterial({ color: 0x3a2510, roughness: 0.85 }),
+      timberL:  new THREE.MeshStandardMaterial({ color: 0x4e3520, roughness: 0.85 }),
+      roof:     new THREE.MeshStandardMaterial({ color: 0x6b3a2a, roughness: 0.9 }),
+      roofD:    new THREE.MeshStandardMaterial({ color: 0x5a3020, roughness: 0.9 }),
+      roofSlate:new THREE.MeshStandardMaterial({ color: 0x555560, roughness: 0.88 }),
+      stone:    new THREE.MeshStandardMaterial({ color: 0x7a7568, roughness: 0.95 }),
+      stoneD:   new THREE.MeshStandardMaterial({ color: 0x5f5a4e, roughness: 0.95 }),
+      stoneW:   new THREE.MeshStandardMaterial({ color: 0x8a8478, roughness: 0.92 }),
+      cobble:   new THREE.MeshStandardMaterial({ color: 0x6a6458, roughness: 1.0 }),
+      dirt:     new THREE.MeshStandardMaterial({ color: 0x5a4e3a, roughness: 1.0 }),
+      wood:     new THREE.MeshStandardMaterial({ color: 0x5c3a1e, roughness: 0.85 }),
+      woodD:    new THREE.MeshStandardMaterial({ color: 0x3e2812, roughness: 0.88 }),
+      metal:    new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.7 }),
+      water:    new THREE.MeshStandardMaterial({ color: 0x2a4a3a, roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.8 }),
+      hay:      new THREE.MeshStandardMaterial({ color: 0xb8a040, roughness: 1.0 }),
+      moss:     new THREE.MeshStandardMaterial({ color: 0x4a5a30, roughness: 1.0 }),
+      cloth:    new THREE.MeshStandardMaterial({ color: 0x8b2020, roughness: 0.9 }),
+      clothB:   new THREE.MeshStandardMaterial({ color: 0x1a3a6a, roughness: 0.9 }),
+      fire:     new THREE.MeshStandardMaterial({ color: 0xff8820, emissive: 0xff6600, emissiveIntensity: 2.0 }),
+      glass:    new THREE.MeshStandardMaterial({ color: 0x88aa88, roughness: 0.2, transparent: true, opacity: 0.3 }),
+    };
+
+    // ─── HELPERS ──────────────────────────────────────
+    function box(w, h, d, mat) {
+      return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    }
+    function cyl(rt, rb, h, seg, mat) {
+      return new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+    }
+    function cone(r, h, seg, mat) {
+      return new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), mat);
+    }
+
+    // ─── GROUND ───────────────────────────────────────
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(800, 800),
+      new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 1.0 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Cobblestone town square
+    const square = new THREE.Mesh(
+      new THREE.CircleGeometry(30, 32),
+      M.cobble
+    );
+    square.rotation.x = -Math.PI / 2;
+    square.position.set(0, 0.05, 0);
+    square.receiveShadow = true;
+    scene.add(square);
+
+    // Cobble streets radiating out
+    function addStreet(x, z, w, len, rot) {
+      const s = box(w, 0.1, len, M.cobble);
+      s.position.set(x, 0.05, z);
+      s.rotation.y = rot || 0;
+      s.receiveShadow = true;
+      scene.add(s);
+    }
+    addStreet(0, -40, 8, 50, 0);
+    addStreet(0, 42, 8, 55, 0);
+    addStreet(-38, 5, 8, 50, Math.PI / 2);
+    addStreet(36, -4, 7, 46, Math.PI * 0.52);
+
+    // ─── HALF-TIMBER BUILDING ─────────────────────────
+    function buildHouse(x, z, w, d, h, stories, roofType, plasterMat, facingAngle) {
+      const g = new THREE.Group();
+      const storyH = h / stories;
+
+      for (let i = 0; i < stories; i++) {
+        const overhang = i * 0.6;
+        const sw = w + overhang * 2;
+        const sd = d + overhang * 2;
+
+        // Plaster walls
+        const walls = box(sw, storyH - 0.3, sd, plasterMat);
+        walls.position.y = i * storyH + storyH / 2;
+        walls.castShadow = true;
+        walls.receiveShadow = true;
+        g.add(walls);
+
+        // Timber frame — horizontal beams
+        const beamH = box(sw + 0.2, 0.3, sd + 0.2, M.timber);
+        beamH.position.y = i * storyH;
+        g.add(beamH);
+
+        // Vertical timbers on front face
+        for (let t = -sw / 2 + 1; t <= sw / 2 - 1; t += 2.5) {
+          const vt = box(0.25, storyH - 0.3, 0.25, M.timber);
+          vt.position.set(t, i * storyH + storyH / 2, sd / 2);
+          g.add(vt);
+        }
+
+        // Cross braces (X pattern) on front
+        if (sw > 3) {
+          const diagLen = Math.sqrt(storyH * storyH + (sw * 0.4) * (sw * 0.4));
+          const diagAngle = Math.atan2(storyH, sw * 0.4);
+          const d1 = box(0.2, diagLen * 0.6, 0.15, M.timber);
+          d1.position.set(-sw * 0.15, i * storyH + storyH / 2, sd / 2 + 0.05);
+          d1.rotation.z = diagAngle * 0.7;
+          g.add(d1);
+          const d2 = box(0.2, diagLen * 0.6, 0.15, M.timber);
+          d2.position.set(sw * 0.15, i * storyH + storyH / 2, sd / 2 + 0.05);
+          d2.rotation.z = -diagAngle * 0.7;
+          g.add(d2);
+        }
+
+        // Windows
+        if (i > 0 || stories === 1) {
+          const winCount = Math.floor(sw / 3);
+          for (let wi = 0; wi < winCount; wi++) {
+            const wx = -sw / 2 + 1.5 + wi * (sw - 2) / Math.max(winCount - 1, 1);
+            const win = box(0.8, 1.0, 0.15, M.glass);
+            win.position.set(wx, i * storyH + storyH * 0.55, sd / 2 + 0.1);
+            g.add(win);
+            // Window frame
+            const frame = box(1.0, 1.2, 0.1, M.timber);
+            frame.position.set(wx, i * storyH + storyH * 0.55, sd / 2 + 0.05);
+            g.add(frame);
+          }
+        }
+      }
+
+      // Top beam
+      const topBeam = box(w + stories * 1.2 + 0.2, 0.3, d + stories * 1.2 + 0.2, M.timber);
+      topBeam.position.y = stories * storyH;
+      g.add(topBeam);
+
+      // Roof
+      const rw = w + stories * 1.2 + 2;
+      const rd = d + stories * 1.2 + 2;
+      const rh = h * 0.5;
+      const roofMat = roofType === 'slate' ? M.roofSlate : (roofType === 'dark' ? M.roofD : M.roof);
+
+      // Gabled roof using two planes
+      const roofSlope = Math.sqrt((rw / 2) * (rw / 2) + rh * rh);
+      const roofAngle = Math.atan2(rh, rw / 2);
+
+      const roofGeo = new THREE.PlaneGeometry(roofSlope, rd + 0.5);
+      const r1 = new THREE.Mesh(roofGeo, roofMat);
+      r1.position.set(-rw / 4 * Math.cos(roofAngle), stories * storyH + rh / 2 + 0.15, 0);
+      r1.rotation.z = roofAngle;
+      r1.rotation.order = 'ZYX';
+      r1.castShadow = true;
+      g.add(r1);
+
+      const r2 = new THREE.Mesh(roofGeo, roofMat);
+      r2.position.set(rw / 4 * Math.cos(roofAngle), stories * storyH + rh / 2 + 0.15, 0);
+      r2.rotation.z = -roofAngle;
+      r2.rotation.order = 'ZYX';
+      r2.castShadow = true;
+      g.add(r2);
+
+      // Gable ends (triangular fill)
+      const gableShape = new THREE.Shape();
+      gableShape.moveTo(-rw / 2, 0);
+      gableShape.lineTo(0, rh);
+      gableShape.lineTo(rw / 2, 0);
+      gableShape.lineTo(-rw / 2, 0);
+      const gableGeo = new THREE.ShapeGeometry(gableShape);
+
+      const gf = new THREE.Mesh(gableGeo, plasterMat);
+      gf.position.set(0, stories * storyH + 0.15, rd / 2);
+      g.add(gf);
+      const gb = new THREE.Mesh(gableGeo, plasterMat);
+      gb.position.set(0, stories * storyH + 0.15, -rd / 2);
+      gb.rotation.y = Math.PI;
+      g.add(gb);
+
+      // Door on ground floor
+      const door = box(1.2, 2.2, 0.15, M.woodD);
+      door.position.set(0, 1.1, d / 2 + 0.1);
+      g.add(door);
+      const doorFrame = box(1.5, 2.5, 0.12, M.timber);
+      doorFrame.position.set(0, 1.25, d / 2 + 0.05);
+      g.add(doorFrame);
+
+      g.position.set(x, 0, z);
+      g.rotation.y = facingAngle || 0;
+      scene.add(g);
+      return g;
+    }
+
+    // ─── TOWN LAYOUT ──────────────────────────────────
+    // Buildings around the square — VP volume arrangement (semi-circle facing camera)
+
+    // Front row — close to camera, flanking the view
+    buildHouse(-14, 10, 6, 5, 7, 2, 'tile', M.plaster, 0.3);
+    buildHouse(14, 8, 5, 5, 8, 2, 'dark', M.plasterW, -0.2);
+
+    // Mid row — main buildings
+    buildHouse(-22, -5, 7, 6, 9, 3, 'tile', M.plasterP, 0.5);
+    buildHouse(20, -8, 6, 5, 8, 2, 'slate', M.plaster, -0.4);
+    buildHouse(-10, -20, 5, 5, 7, 2, 'tile', M.plasterW, 0.1);
+    buildHouse(10, -18, 6, 6, 10, 3, 'dark', M.plasterP, -0.15);
+
+    // Back row — deeper, taller for skyline
+    buildHouse(-30, -25, 6, 5, 8, 2, 'slate', M.plaster, 0.6);
+    buildHouse(30, -22, 5, 5, 7, 2, 'tile', M.plasterW, -0.5);
+    buildHouse(-18, -38, 7, 6, 11, 3, 'dark', M.plasterP, 0.2);
+    buildHouse(18, -35, 6, 5, 9, 3, 'tile', M.plaster, -0.3);
+    buildHouse(0, -42, 8, 7, 12, 3, 'slate', M.plasterW, 0);
+
+    // Side buildings — fill out the periphery
+    buildHouse(-35, 5, 5, 4, 7, 2, 'tile', M.plasterP, 0.8);
+    buildHouse(35, 2, 5, 4, 6, 2, 'dark', M.plaster, -0.7);
+    buildHouse(-40, -15, 5, 5, 8, 2, 'slate', M.plasterW, 0.9);
+    buildHouse(38, -15, 6, 5, 7, 2, 'tile', M.plasterP, -0.8);
+
+    // Far background buildings (silhouettes for depth)
+    buildHouse(-25, -55, 6, 5, 9, 2, 'dark', M.stoneW, 0.3);
+    buildHouse(25, -55, 7, 6, 10, 3, 'tile', M.plaster, -0.2);
+    buildHouse(0, -60, 5, 5, 8, 2, 'slate', M.plasterP, 0.1);
+    buildHouse(-45, -40, 5, 4, 7, 2, 'tile', M.plasterW, 0.7);
+    buildHouse(45, -38, 5, 4, 7, 2, 'dark', M.plaster, -0.6);
+
+    // ─── CHURCH / CATHEDRAL ───────────────────────────
+    const church = new THREE.Group();
+
+    // Nave
+    const nave = box(8, 12, 18, M.stone);
+    nave.position.y = 6;
+    nave.castShadow = true;
+    church.add(nave);
+
+    // Nave roof
+    const naveRoofGeo = new THREE.ConeGeometry(7, 5, 4);
+    const naveRoof = new THREE.Mesh(naveRoofGeo, M.roofSlate);
+    naveRoof.position.y = 14.5;
+    naveRoof.rotation.y = Math.PI / 4;
+    naveRoof.scale.set(1, 1, 2.2);
+    naveRoof.castShadow = true;
+    church.add(naveRoof);
+
+    // Bell tower
+    const tower = box(4.5, 22, 4.5, M.stone);
+    tower.position.set(0, 11, -10);
+    tower.castShadow = true;
+    church.add(tower);
+
+    // Tower spire
+    const spire = cone(3, 10, 4, M.roofSlate);
+    spire.position.set(0, 27, -10);
+    spire.castShadow = true;
+    church.add(spire);
+
+    // Tower windows (arched appearance via small boxes)
+    for (let side of [-1, 1]) {
+      const tw = box(1.2, 2.5, 0.3, M.stoneD);
+      tw.position.set(side * 2.3, 18, -10);
+      church.add(tw);
+    }
+    const twF = box(1.2, 2.5, 0.3, M.stoneD);
+    twF.position.set(0, 18, -7.6);
+    church.add(twF);
+
+    // Rose window (circle approximated)
+    const roseGeo = new THREE.RingGeometry(1.2, 1.8, 12);
+    const rose = new THREE.Mesh(roseGeo, M.stoneD);
+    rose.position.set(0, 9, 9.05);
+    church.add(rose);
+
+    // Church door
+    const chDoor = box(2.5, 4, 0.3, M.woodD);
+    chDoor.position.set(0, 2, 9.1);
+    church.add(chDoor);
+
+    // Buttresses
+    for (let i = -1; i <= 1; i += 2) {
+      for (let j = -6; j <= 6; j += 6) {
+        const butt = box(1.2, 8, 1.5, M.stone);
+        butt.position.set(i * 4.5, 4, j);
+        butt.castShadow = true;
+        church.add(butt);
+      }
+    }
+
+    church.position.set(-8, 0, -30);
+    church.rotation.y = 0.15;
+    scene.add(church);
+
+    // ─── TOWN WELL ────────────────────────────────────
+    const well = new THREE.Group();
+
+    // Stone base
+    const wellBase = cyl(2.2, 2.4, 1.5, 12, M.stone);
+    wellBase.position.y = 0.75;
+    well.add(wellBase);
+
+    // Inner hole
+    const wellHole = cyl(1.6, 1.6, 1.6, 12, M.stoneD);
+    wellHole.position.y = 0.8;
+    well.add(wellHole);
+
+    // Water inside
+    const wellWater = cyl(1.5, 1.5, 0.1, 12, M.water);
+    wellWater.position.y = 0.4;
+    well.add(wellWater);
+
+    // Support posts
+    for (let side of [-1, 1]) {
+      const post = box(0.25, 3.5, 0.25, M.timber);
+      post.position.set(side * 1.5, 3.25, 0);
+      well.add(post);
+    }
+
+    // Cross beam
+    const crossBeam = box(3.5, 0.25, 0.25, M.timber);
+    crossBeam.position.y = 5;
+    well.add(crossBeam);
+
+    // Roof over well
+    const wellRoof = cone(2.5, 1.5, 4, M.roof);
+    wellRoof.position.y = 5.75;
+    well.add(wellRoof);
+
+    // Bucket
+    const bucket = cyl(0.3, 0.35, 0.5, 8, M.woodD);
+    bucket.position.set(0.3, 2, 0);
+    well.add(bucket);
+
+    well.position.set(2, 0, 3);
+    scene.add(well);
+
+    // ─── MARKET STALLS ────────────────────────────────
+    function buildStall(x, z, rot, clothMat) {
+      const stall = new THREE.Group();
+
+      // Counter
+      const counter = box(4, 1, 1.5, M.wood);
+      counter.position.y = 1;
+      counter.castShadow = true;
+      stall.add(counter);
+
+      // Posts
+      for (let px of [-1.8, 1.8]) {
+        const p = box(0.2, 3.5, 0.2, M.wood);
+        p.position.set(px, 1.75, -0.5);
+        stall.add(p);
+        const pf = box(0.2, 3, 0.2, M.wood);
+        pf.position.set(px, 1.5, 0.8);
+        stall.add(pf);
+      }
+
+      // Awning
+      const awning = box(4.5, 0.08, 2.2, clothMat);
+      awning.position.set(0, 3.3, 0.1);
+      awning.rotation.x = 0.15;
+      stall.add(awning);
+
+      // Goods on counter (small boxes as produce/wares)
+      for (let i = 0; i < 4; i++) {
+        const goods = box(0.6, 0.4, 0.5, [M.hay, M.cloth, M.clothB, M.plasterP][i]);
+        goods.position.set(-1.2 + i * 0.8, 1.7, 0);
+        stall.add(goods);
+      }
+
+      stall.position.set(x, 0, z);
+      stall.rotation.y = rot;
+      scene.add(stall);
+    }
+
+    buildStall(-5, 14, 0.6, M.cloth);
+    buildStall(6, 13, -0.4, M.clothB);
+    buildStall(12, -2, -1.2, M.cloth);
+    buildStall(-12, 2, 1.0, M.clothB);
+
+    // ─── BARRELS & CRATES ─────────────────────────────
+    function addBarrel(x, y, z) {
+      const barrel = cyl(0.5, 0.45, 1.0, 8, M.wood);
+      barrel.position.set(x, y + 0.5, z);
+      barrel.castShadow = true;
+      scene.add(barrel);
+      // Metal bands
+      const band = cyl(0.52, 0.52, 0.08, 8, M.metal);
+      band.position.set(x, y + 0.3, z);
+      scene.add(band);
+      const band2 = cyl(0.52, 0.52, 0.08, 8, M.metal);
+      band2.position.set(x, y + 0.7, z);
+      scene.add(band2);
+    }
+
+    function addCrate(x, y, z, s) {
+      const c = box(s, s, s, M.woodD);
+      c.position.set(x, y + s / 2, z);
+      c.rotation.y = Math.random() * 0.5;
+      c.castShadow = true;
+      scene.add(c);
+    }
+
+    // Scatter barrels and crates
+    addBarrel(-16, 0, 12); addBarrel(-15.3, 0, 11.5); addBarrel(-15.7, 1, 11.8);
+    addBarrel(17, 0, 10); addBarrel(17.8, 0, 9.5);
+    addCrate(-18, 0, 9, 1.0); addCrate(-17.5, 0, 8.2, 0.8);
+    addCrate(20, 0, 7, 1.1); addCrate(19.5, 1.1, 7.2, 0.7);
+    addBarrel(8, 0, -14); addBarrel(7.2, 0, -13.5);
+    addCrate(-6, 0, -16, 0.9); addCrate(-5, 0, -15, 1.0);
+
+    // ─── HAY CART ─────────────────────────────────────
+    const cart = new THREE.Group();
+    const cartBed = box(3, 0.2, 1.8, M.wood);
+    cartBed.position.y = 0.8;
+    cart.add(cartBed);
+    // Wheels
+    for (let side of [-1, 1]) {
+      const wheel = cyl(0.02, 0.02, 0.6, 12, M.woodD);
+      wheel.rotation.z = Math.PI / 2;
+      const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.08, 4, 12), M.metal);
+      wheelRim.rotation.y = Math.PI / 2;
+      wheelRim.position.set(side * 1.1, 0.6, 0);
+      wheel.position.set(side * 1.1, 0.6, 0);
+      cart.add(wheelRim);
+      // Spokes
+      for (let s = 0; s < 6; s++) {
+        const spoke = box(0.06, 1.1, 0.06, M.wood);
+        spoke.position.set(side * 1.1, 0.6, 0);
+        spoke.rotation.x = (s / 6) * Math.PI;
+        cart.add(spoke);
+      }
+    }
+    // Hay pile
+    const hayPile = box(2.5, 1.2, 1.5, M.hay);
+    hayPile.position.y = 1.5;
+    hayPile.rotation.y = 0.1;
+    cart.add(hayPile);
+    // Handles
+    const handle = box(0.15, 0.15, 2, M.wood);
+    handle.position.set(-0.6, 0.9, -1.8);
+    handle.rotation.x = 0.15;
+    cart.add(handle);
+    const handle2 = box(0.15, 0.15, 2, M.wood);
+    handle2.position.set(0.6, 0.9, -1.8);
+    handle2.rotation.x = 0.15;
+    cart.add(handle2);
+
+    cart.position.set(8, 0, 8);
+    cart.rotation.y = -0.3;
+    scene.add(cart);
+
+    // ─── CASTLE WALL (background) ─────────────────────
+    const wallGroup = new THREE.Group();
+
+    // Main wall
+    const wallLen = 80;
+    const wall = box(wallLen, 8, 2, M.stone);
+    wall.position.y = 4;
+    wall.castShadow = true;
+    wallGroup.add(wall);
+
+    // Battlements
+    for (let i = -wallLen / 2 + 1; i < wallLen / 2; i += 2.5) {
+      const merlon = box(1.2, 1.5, 2.2, M.stone);
+      merlon.position.set(i, 8.75, 0);
+      merlon.castShadow = true;
+      wallGroup.add(merlon);
+    }
+
+    // Towers at ends and middle
+    for (let tx of [-wallLen / 2, 0, wallLen / 2]) {
+      const wt = cyl(3, 3.2, 14, 8, M.stone);
+      wt.position.set(tx, 7, 0);
+      wt.castShadow = true;
+      wallGroup.add(wt);
+
+      const wtRoof = cone(3.8, 5, 8, M.roofSlate);
+      wtRoof.position.set(tx, 16.5, 0);
+      wtRoof.castShadow = true;
+      wallGroup.add(wtRoof);
+
+      // Tower battlements
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        const tm = box(1, 1.2, 0.8, M.stone);
+        tm.position.set(tx + Math.cos(ang) * 3.1, 14.3, Math.sin(ang) * 3.1);
+        tm.rotation.y = ang;
+        wallGroup.add(tm);
+      }
+    }
+
+    // Gatehouse
+    const gatehouse = box(8, 12, 4, M.stone);
+    gatehouse.position.set(0, 6, 2);
+    wallGroup.add(gatehouse);
+    const gate = box(3.5, 5, 4.5, M.stoneD);
+    gate.position.set(0, 2.5, 2);
+    wallGroup.add(gate);
+    // Portcullis
+    for (let gi = -1.5; gi <= 1.5; gi += 0.5) {
+      const bar = box(0.1, 5, 0.1, M.metal);
+      bar.position.set(gi, 2.5, 4.1);
+      wallGroup.add(bar);
+    }
+    for (let gh = 1; gh <= 4; gh += 1) {
+      const hbar = box(3.5, 0.1, 0.1, M.metal);
+      hbar.position.set(0, gh, 4.1);
+      wallGroup.add(hbar);
+    }
+
+    wallGroup.position.set(0, 0, -70);
+    scene.add(wallGroup);
+
+    // ─── TORCHES ──────────────────────────────────────
+    const torchLights = [];
+
+    function addTorch(x, y, z) {
+      const torch = new THREE.Group();
+      const bracket = box(0.1, 0.6, 0.3, M.metal);
+      bracket.position.set(0, 0, 0);
+      torch.add(bracket);
+      const stick = box(0.1, 1.0, 0.1, M.woodD);
+      stick.position.set(0, 0.5, 0.15);
+      stick.rotation.x = -0.3;
+      torch.add(stick);
+
+      // Flame
+      const flame = cone(0.15, 0.4, 5, M.fire);
+      flame.position.set(0, 1.05, 0.3);
+      torch.add(flame);
+
+      torch.position.set(x, y, z);
+      scene.add(torch);
+
+      // Point light
+      const light = new THREE.PointLight(0xff8833, 1.5, 18, 1.5);
+      light.position.set(x, y + 1.2, z + 0.3);
+      light.castShadow = false; // perf: skip shadow from torches
+      scene.add(light);
+      torchLights.push({ light, baseIntensity: 1.5 });
+    }
+
+    // Torches on buildings and around square
+    addTorch(-13.5, 4, 12.6); addTorch(13.5, 4, 10.5);
+    addTorch(-21, 5, -2); addTorch(19, 4.5, -5.5);
+    addTorch(-8.5, 5, -20); addTorch(9.5, 6, -15);
+    addTorch(-4, 3, 0.5); addTorch(5, 3, 0.5);
+    addTorch(0, 6, -70); addTorch(-15, 6, -70); addTorch(15, 6, -70);
+
+    // ─── HANGING SIGNS ────────────────────────────────
+    function addSign(x, y, z, rot) {
+      const signG = new THREE.Group();
+      const bracket = box(1.5, 0.1, 0.1, M.metal);
+      bracket.position.set(0.75, 0, 0);
+      signG.add(bracket);
+      const chain1 = box(0.05, 0.4, 0.05, M.metal);
+      chain1.position.set(0.4, -0.2, 0);
+      signG.add(chain1);
+      const chain2 = box(0.05, 0.4, 0.05, M.metal);
+      chain2.position.set(1.1, -0.2, 0);
+      signG.add(chain2);
+      const board = box(1.0, 0.7, 0.08, M.wood);
+      board.position.set(0.75, -0.7, 0);
+      signG.add(board);
+      signG.position.set(x, y, z);
+      signG.rotation.y = rot || 0;
+      scene.add(signG);
+    }
+
+    addSign(-14, 5, 12.5, 0.3);
+    addSign(14, 5.5, 10, -0.2);
+    addSign(10, 7, -15.5, -0.15);
+
+    // ─── TREES & VEGETATION ───────────────────────────
+    function addTree(x, z, scale) {
+      const tree = new THREE.Group();
+      const trunk = cyl(0.3 * scale, 0.4 * scale, 3 * scale, 6, M.timber);
+      trunk.position.y = 1.5 * scale;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      // Foliage layers
+      for (let i = 0; i < 3; i++) {
+        const fol = cone(2 * scale * (1 - i * 0.2), 2.5 * scale, 7, M.moss);
+        fol.position.y = 3 * scale + i * 1.5 * scale;
+        fol.castShadow = true;
+        tree.add(fol);
+      }
+      tree.position.set(x, 0, z);
+      scene.add(tree);
+    }
+
+    addTree(-30, 15, 1.2); addTree(32, 12, 1.0); addTree(-38, -30, 1.3);
+    addTree(40, -28, 0.9); addTree(-48, 10, 1.1); addTree(48, 8, 1.0);
+    addTree(-25, 20, 0.8); addTree(28, 18, 1.1);
+    // Background treeline
+    for (let i = -50; i <= 50; i += 6) {
+      addTree(i + Math.random() * 4, -80 + Math.random() * 10, 0.8 + Math.random() * 0.6);
+    }
+
+    // ─── LIGHTING (cinematic VP) ──────────────────────
+
+    // Key light — warm sunset from the side
+    const keyLight = new THREE.DirectionalLight(0xffd4a0, 1.8);
+    keyLight.position.set(80, 60, 40);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.left = -80; keyLight.shadow.camera.right = 80;
+    keyLight.shadow.camera.top = 80; keyLight.shadow.camera.bottom = -80;
+    keyLight.shadow.camera.far = 250;
+    keyLight.shadow.bias = -0.001;
+    scene.add(keyLight);
+
+    // Fill — cool blue from opposite side
+    const fillLight = new THREE.DirectionalLight(0x6688bb, 0.4);
+    fillLight.position.set(-60, 40, 30);
+    scene.add(fillLight);
+
+    // Ambient + hemisphere
+    scene.add(new THREE.AmbientLight(0x332244, 0.3));
+    const hemi = new THREE.HemisphereLight(0x665544, 0x222211, 0.4);
+    scene.add(hemi);
+
+    // ─── SKY GRADIENT ─────────────────────────────────
+    const skyCanvas = document.createElement('canvas');
+    skyCanvas.width = 2; skyCanvas.height = 256;
+    const skyCtx = skyCanvas.getContext('2d');
+
+    function updateSky(tod) {
+      // tod 0 = night, 50 = sunset, 100 = day
+      const t = tod / 100;
+      const grad = skyCtx.createLinearGradient(0, 0, 0, 256);
+
+      if (t < 0.3) {
+        // Night
+        grad.addColorStop(0, '#0a0a1a');
+        grad.addColorStop(0.5, '#0f1020');
+        grad.addColorStop(1, '#1a1525');
+      } else if (t < 0.5) {
+        // Dusk
+        const f = (t - 0.3) / 0.2;
+        grad.addColorStop(0, lerpColor('#0a0a1a', '#1a1535', f));
+        grad.addColorStop(0.4, lerpColor('#0f1020', '#4a2040', f));
+        grad.addColorStop(0.7, lerpColor('#1a1525', '#cc5522', f));
+        grad.addColorStop(1, lerpColor('#1a1525', '#ffaa44', f));
+      } else if (t < 0.7) {
+        // Golden hour / sunset
+        const f = (t - 0.5) / 0.2;
+        grad.addColorStop(0, lerpColor('#1a1535', '#334488', f));
+        grad.addColorStop(0.3, lerpColor('#4a2040', '#8866aa', f));
+        grad.addColorStop(0.6, lerpColor('#cc5522', '#ee8844', f));
+        grad.addColorStop(1, lerpColor('#ffaa44', '#ffcc88', f));
+      } else {
+        // Day
+        const f = (t - 0.7) / 0.3;
+        grad.addColorStop(0, lerpColor('#334488', '#5588cc', f));
+        grad.addColorStop(0.5, lerpColor('#8866aa', '#88aadd', f));
+        grad.addColorStop(1, lerpColor('#ffcc88', '#ddeeff', f));
+      }
+
+      skyCtx.fillStyle = grad;
+      skyCtx.fillRect(0, 0, 2, 256);
+
+      if (!scene.background || scene.background.isColor) {
+        scene.background = new THREE.CanvasTexture(skyCanvas);
+      } else {
+        scene.background.needsUpdate = true;
+      }
+
+      // Update fog color to match horizon
+      const pixel = skyCtx.getImageData(0, 200, 1, 1).data;
+      scene.fog.color.setRGB(pixel[0] / 255, pixel[1] / 255, pixel[2] / 255);
+    }
+
+    function lerpColor(a, b, t) {
+      const parse = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+      const [ar, ag, ab] = parse(a);
+      const [br, bg, bb] = parse(b);
+      const r = Math.round(ar + (br - ar) * t);
+      const g = Math.round(ag + (bg - ag) * t);
+      const bl = Math.round(ab + (bb - ab) * t);
+      return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${bl.toString(16).padStart(2, '0')}`;
+    }
+
+    // ─── CONTROLS ─────────────────────────────────────
+    const todSlider = document.getElementById('tod');
+    const fogSlider = document.getElementById('fogDensity');
+    const torchSlider = document.getElementById('torchGlow');
+    const flyCheck = document.getElementById('fly');
+
+    scene.fog = new THREE.Fog(0x332244, 60, 200);
+
+    // ─── FLYTHROUGH ───────────────────────────────────
+    let flyAngle = 0;
+
+    // ─── ANIMATE ──────────────────────────────────────
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      const time = clock.getElapsedTime();
+
+      // TOD
+      const tod = parseFloat(todSlider.value);
+      updateSky(tod);
+
+      // Lighting intensity based on TOD
+      const dayFactor = Math.max(0, (tod - 30) / 70);
+      keyLight.intensity = 0.3 + dayFactor * 2.0;
+      fillLight.intensity = 0.1 + dayFactor * 0.4;
+      hemi.intensity = 0.15 + dayFactor * 0.35;
+
+      // Fog
+      const fogVal = parseFloat(fogSlider.value);
+      scene.fog.near = 20 + (100 - fogVal) * 1.5;
+      scene.fog.far = 80 + (100 - fogVal) * 3;
+
+      // Torch flicker
+      const torchVal = parseFloat(torchSlider.value) / 100;
+      const nightFactor = 1 - dayFactor;
+      for (const t of torchLights) {
+        const flicker = 0.85 + Math.sin(time * 8 + Math.random() * 2) * 0.15;
+        t.light.intensity = t.baseIntensity * torchVal * nightFactor * flicker * 2;
+      }
+
+      // Flythrough
+      if (flyCheck.checked) {
+        flyAngle += dt * 0.06;
+        const radius = 55;
+        const height = 10 + Math.sin(flyAngle * 0.4) * 5;
+        camera.position.set(
+          Math.sin(flyAngle) * radius,
+          height,
+          Math.cos(flyAngle) * radius
+        );
+        orbit.target.set(0, 6, -15);
+      }
+
+      orbit.update();
+      renderer.render(scene, camera);
+    }
+
+    // Init
+    updateSky(35);
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
