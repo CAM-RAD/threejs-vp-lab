@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.2</div>
+    <div class="sub">Virtual Production Lab &mdash; v3.3</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.2</div>
+  <div id="info">NYC Chase — VP Lab v3.3</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -274,10 +274,11 @@
     const barFill = document.getElementById('bar-fill');
     const loadText = document.getElementById('load-text');
     const FILES = [
-      'police-car.glb','sports-car.glb','taxi.glb','sedan.glb','car.glb',
-      'car2.glb','garbage-truck.glb','motorcycle.glb','traffic-light.glb',
-      'hydrant.glb','dumpster.glb','bench.glb','trash-can.glb',
-      'stop-sign.glb','traffic-cone.glb',
+      'charger-police.glb','sports-car.glb','yellow-cab.glb','blue-sedan.glb',
+      'tahoe.glb','kitsune-car.glb','peugeot-rally.glb','smashing-taxi.glb',
+      'garbage-truck.glb','motorcycle.glb','bus.glb',
+      'traffic-light.glb','hydrant.glb','dumpster.glb','bench.glb',
+      'trash-can.glb','stop-sign.glb','traffic-cone.glb',
     ];
     const cache = {};
     let ld = 0;
@@ -398,24 +399,29 @@
     // ─── START ────────────────────────────────────────
     preloadAll().then(() => {
       loadText.textContent='Placing assets...';
+      // Chase vehicles
       place('sports-car.glb',3,0.05,-5,1.4,Math.PI);
-      place('police-car.glb',-4,0.05,25,1.5,Math.PI);
-      place('police-car.glb',5,0.05,40,1.5,Math.PI);
-      place('taxi.glb',-9,0.05,-40,1.5,0);
-      place('sedan.glb',-3,0.05,-80,1.5,0);
-      place('car.glb',-8,0.05,-140,1.4,0);
-      place('car2.glb',-4,0.05,-200,1.5,0);
-      place('taxi.glb',-9,0.05,-270,1.5,0);
+      place('charger-police.glb',-4,0.05,25,1.5,Math.PI);
+      place('charger-police.glb',5,0.05,40,1.5,Math.PI);
+      // Oncoming traffic
+      place('yellow-cab.glb',-9,0.05,-40,1.5,0);
+      place('blue-sedan.glb',-3,0.05,-80,1.5,0);
+      place('kitsune-car.glb',-8,0.05,-140,1.4,0);
+      place('smashing-taxi.glb',-4,0.05,-200,1.5,0);
+      place('yellow-cab.glb',-9,0.05,-270,1.5,0);
+      // Same direction
       place('garbage-truck.glb',7,0.05,-50,2.8,Math.PI);
-      place('car2.glb',4,0.05,-100,1.5,Math.PI);
-      place('sedan.glb',8,0.05,-160,1.5,Math.PI);
-      place('taxi.glb',3,0.05,-230,1.5,Math.PI);
-      place('car.glb',7,0.05,-300,1.4,Math.PI);
+      place('tahoe.glb',4,0.05,-100,1.6,Math.PI);
+      place('peugeot-rally.glb',8,0.05,-160,1.4,Math.PI);
+      place('yellow-cab.glb',3,0.05,-230,1.5,Math.PI);
+      place('bus.glb',7,0.05,-300,2.8,Math.PI);
+      // Motorcycle
       place('motorcycle.glb',1,0.05,-15,1.2,Math.PI+0.2);
-      place('sedan.glb',-14,0.15,-30,1.5,Math.PI/2);
-      place('car2.glb',14,0.15,-70,1.5,-Math.PI/2);
-      place('taxi.glb',-14,0.15,-130,1.5,Math.PI/2);
-      place('car.glb',14,0.15,-190,1.5,-Math.PI/2);
+      // Parked
+      place('blue-sedan.glb',-14,0.15,-30,1.5,Math.PI/2);
+      place('tahoe.glb',14,0.15,-70,1.6,-Math.PI/2);
+      place('smashing-taxi.glb',-14,0.15,-130,1.5,Math.PI/2);
+      place('kitsune-car.glb',14,0.15,-190,1.4,-Math.PI/2);
       place('traffic-light.glb',-13,0.15,-20,5,0);
       place('traffic-light.glb',13,0.15,-140,5,Math.PI);
       place('traffic-light.glb',-13,0.15,-260,5,0);
