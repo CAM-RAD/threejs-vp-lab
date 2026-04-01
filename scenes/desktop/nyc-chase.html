@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.0</div>
+    <div class="sub">Virtual Production Lab &mdash; v3.1</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.0</div>
+  <div id="info">NYC Chase — VP Lab v3.1</div>
   <div id="controls">
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
@@ -130,7 +130,7 @@
       // Body
       const body = box(w, h, d, mat); body.position.y = h/2; body.castShadow = true; g.add(body);
       // Cornice
-      g.add(Object.assign(box(w+0.3, 0.4, d+0.3, M.metal), {position: new THREE.Vector3(0, h, 0)}));
+      const corn = box(w+0.3, 0.4, d+0.3, M.metal); corn.position.y = h; g.add(corn);
       // Storefront
       const sf = box(w+0.05, 4.5, d+0.05, shopMats[~~(Math.random()*3)]); sf.position.y = 2.25; g.add(sf);
       // Store window
@@ -170,10 +170,10 @@
     for (let z = -RL+60; z < 50; z += 40) {
       const p1 = cyl(0.12,0.15,9,6,M.metal); p1.position.set(-13,4.5,z); scene.add(p1);
       const b1 = box(0.8,0.06,0.3,M.neonW); b1.position.set(-11,8.7,z); scene.add(b1);
-      scene.add(Object.assign(new THREE.PointLight(0xffeebb,2.5,22,2),{position:new THREE.Vector3(-11,8.5,z)}));
+      const sl1 = new THREE.PointLight(0xffeebb,2.5,22,2); sl1.position.set(-11,8.5,z); scene.add(sl1);
       const p2 = cyl(0.12,0.15,9,6,M.metal); p2.position.set(13,4.5,z+20); scene.add(p2);
       const b2 = box(0.8,0.06,0.3,M.neonW); b2.position.set(11,8.7,z+20); scene.add(b2);
-      scene.add(Object.assign(new THREE.PointLight(0xffeebb,2.5,22,2),{position:new THREE.Vector3(11,8.5,z+20)}));
+      const sl2 = new THREE.PointLight(0xffeebb,2.5,22,2); sl2.position.set(11,8.5,z+20); scene.add(sl2);
     }
 
     // ─── NEON SIGNS ───────────────────────────────────
@@ -204,8 +204,8 @@
     const pL1B = new THREE.PointLight(0x0044ff,8,35,2); pL1B.position.set(-4,2.2,25); scene.add(pL1B);
     const pL2R = new THREE.PointLight(0xff0000,6,30,2); pL2R.position.set(5,2.2,40); scene.add(pL2R);
     const pL2B = new THREE.PointLight(0x0044ff,6,30,2); pL2B.position.set(5,2.2,40); scene.add(pL2B);
-    scene.add(Object.assign(new THREE.PointLight(0xffeedd,4,40,2),{position:new THREE.Vector3(2,0.8,-7)}));
-    scene.add(Object.assign(new THREE.PointLight(0xffeedd,4,40,2),{position:new THREE.Vector3(4,0.8,-7)}));
+    const hl1 = new THREE.PointLight(0xffeedd,4,40,2); hl1.position.set(2,0.8,-7); scene.add(hl1);
+    const hl2 = new THREE.PointLight(0xffeedd,4,40,2); hl2.position.set(4,0.8,-7); scene.add(hl2);
     scene.add(new THREE.AmbientLight(0x1a1a33, 0.4));
     scene.add(new THREE.HemisphereLight(0x151530, 0x050508, 0.25));
     const moon = new THREE.DirectionalLight(0x334466, 0.4);
