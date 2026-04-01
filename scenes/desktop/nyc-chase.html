@@ -26,18 +26,19 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.5</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.0</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.5</div>
+  <div id="info">NYC Chase — VP Lab v4.0</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
     <label>Speed <input type="range" id="spd" min="0" max="100" value="45"></label>
     <label>Exposure <input type="range" id="exposure" min="0" max="100" value="55"></label>
+    <label>Bloom <input type="range" id="bloom" min="0" max="100" value="50"></label>
     <label>Police Lights <input type="range" id="policeInt" min="0" max="100" value="80"></label>
     <label><input type="checkbox" id="fly" checked> Chase Cam</label>
   </div>
@@ -53,8 +54,13 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -71,6 +77,58 @@
     camera.position.set(3, 5, 40);
     const orbit = new OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true; orbit.target.set(0, 2, 0);
+
+    // ─── POST-PROCESSING (industry standard) ─────────
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+
+    // Bloom — makes lights glow and bleed (Unreal-style)
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.8,   // strength
+      0.4,   // radius
+      0.85   // threshold
+    );
+    composer.addPass(bloomPass);
+
+    // FXAA anti-aliasing (post-process AA, works with composer)
+    const fxaaPass = new ShaderPass(FXAAShader);
+    fxaaPass.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
+    composer.addPass(fxaaPass);
+
+    // Vignette shader (cinematic darkened edges)
+    const vignetteShader = {
+      uniforms: { tDiffuse: { value: null }, darkness: { value: 1.2 }, offset: { value: 1.0 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float darkness; uniform float offset;
+        varying vec2 vUv;
+        void main(){
+          vec4 c=texture2D(tDiffuse,vUv);
+          vec2 uv=(vUv-vec2(0.5))*vec2(offset);
+          gl_FragColor=vec4(mix(c.rgb,c.rgb*c.rgb,darkness*dot(uv,uv)),c.a);
+        }`
+    };
+    const vignettePass = new ShaderPass(vignetteShader);
+    composer.addPass(vignettePass);
+
+    // Chromatic aberration (subtle, cinematic)
+    const chromaticShader = {
+      uniforms: { tDiffuse: { value: null }, amount: { value: 0.0015 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float amount;
+        varying vec2 vUv;
+        void main(){
+          vec2 dir=vUv-vec2(0.5);
+          float d=length(dir);
+          float r=texture2D(tDiffuse,vUv+dir*amount*d).r;
+          float g=texture2D(tDiffuse,vUv).g;
+          float b=texture2D(tDiffuse,vUv-dir*amount*d).b;
+          gl_FragColor=vec4(r,g,b,1.0);
+        }`
+    };
+    const chromaticPass = new ShaderPass(chromaticShader);
+    composer.addPass(chromaticPass);
 
     function box(w,h,d,m){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); }
     function cyl(rt,rb,h,s,m){ return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); }
@@ -442,7 +500,13 @@
       for (const n of neonLights) n.intensity = 0.3 + neonF * 2;
       for(const s of steamVents){s.scale.x=0.7+Math.sin(t*3+s.position.x)*0.4;s.scale.z=0.7+Math.cos(t*2.5)*0.4;s.material.opacity=0.08+Math.sin(t*2)*0.04;}
       if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=45;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
-      orbit.update(); renderer.render(scene,camera);
+      // Bloom control
+      const bloomVal = parseFloat(document.getElementById('bloom').value) / 100;
+      bloomPass.strength = bloomVal * 1.6;
+      bloomPass.threshold = 0.7 + (1 - bloomVal) * 0.25;
+
+      orbit.update();
+      composer.render();
     }
 
     // ─── START ────────────────────────────────────────
@@ -510,7 +574,14 @@
       animate();
     });
 
-    window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+    window.addEventListener('resize',()=>{
+      camera.aspect=window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth,window.innerHeight);
+      composer.setSize(window.innerWidth,window.innerHeight);
+      fxaaPass.uniforms['resolution'].value.set(1/window.innerWidth,1/window.innerHeight);
+      bloomPass.resolution.set(window.innerWidth,window.innerHeight);
+    });
   </script>
 </body>
 </html>
