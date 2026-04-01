@@ -26,18 +26,18 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.0</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.1</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.0</div>
+  <div id="info">NYC Chase — VP Lab v4.1</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
     <label>Speed <input type="range" id="spd" min="0" max="100" value="45"></label>
-    <label>Exposure <input type="range" id="exposure" min="0" max="100" value="55"></label>
+    <label>Exposure <input type="range" id="exposure" min="0" max="100" value="65"></label>
     <label>Bloom <input type="range" id="bloom" min="0" max="100" value="50"></label>
     <label>Police Lights <input type="range" id="policeInt" min="0" max="100" value="80"></label>
     <label><input type="checkbox" id="fly" checked> Chase Cam</label>
@@ -66,7 +66,7 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.7;
+    renderer.toneMappingExposure = 0.85;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -86,9 +86,9 @@
     // Bloom — makes lights glow and bleed (Unreal-style)
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.8,   // strength
-      0.4,   // radius
-      0.85   // threshold
+      1.0,   // strength
+      0.5,   // radius
+      0.6    // threshold (lower = more things glow)
     );
     composer.addPass(bloomPass);
 
@@ -135,8 +135,8 @@
 
     // ─── MATERIALS ────────────────────────────────────
     const M = {
-      road:    new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.25, metalness: 0.05 }),
-      sidewalk:new THREE.MeshStandardMaterial({ color: 0x3a3a38, roughness: 0.85 }),
+      road:    new THREE.MeshStandardMaterial({ color: 0x181820, roughness: 0.2, metalness: 0.08 }),
+      sidewalk:new THREE.MeshStandardMaterial({ color: 0x444442, roughness: 0.75 }),
       curb:    new THREE.MeshStandardMaterial({ color: 0x4a4a48, roughness: 0.8 }),
       lineW:   new THREE.MeshStandardMaterial({ color: 0xcccccc, emissive: 0x444444, emissiveIntensity: 0.4 }),
       lineY:   new THREE.MeshStandardMaterial({ color: 0xccaa00, emissive: 0x665500, emissiveIntensity: 0.4 }),
@@ -154,7 +154,7 @@
       neonC:   new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.0 }),
       neonW:   new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.2 }),
       steam:   new THREE.MeshStandardMaterial({ color: 0x999999, transparent: true, opacity: 0.12 }),
-      puddle:  new THREE.MeshStandardMaterial({ color: 0x080810, roughness: 0.02, metalness: 0.6, transparent: true, opacity: 0.35 }),
+      puddle:  new THREE.MeshStandardMaterial({ color: 0x101018, roughness: 0.01, metalness: 0.7, transparent: true, opacity: 0.45 }),
       shopR:   new THREE.MeshStandardMaterial({ color: 0x661111, emissive: 0x331111, emissiveIntensity: 0.3 }),
       shopG:   new THREE.MeshStandardMaterial({ color: 0x115511, emissive: 0x113311, emissiveIntensity: 0.3 }),
       shopB:   new THREE.MeshStandardMaterial({ color: 0x111155, emissive: 0x111133, emissiveIntensity: 0.3 }),
@@ -269,14 +269,19 @@
       const t2 = box(16, th * 0.85, 12, M.glass); t2.position.set(50, th * 0.85 / 2, z + 20); t2.castShadow = true; scene.add(t2);
     }
 
-    // ─── STREETLIGHTS (PointLight) ────────────────────
-    for (let z = -RL+60; z < 50; z += 40) {
+    // ─── STREETLIGHTS (brighter, wider range) ──────────
+    for (let z = -RL+60; z < 50; z += 35) {
+      // Left side
       const p1 = cyl(0.12,0.15,9,6,M.metal); p1.position.set(-13,4.5,z); scene.add(p1);
       const b1 = box(0.8,0.06,0.3,M.neonW); b1.position.set(-11,8.7,z); scene.add(b1);
-      const sl1 = new THREE.PointLight(0xffeebb,2.5,22,2); sl1.position.set(-11,8.5,z); scene.add(sl1);
-      const p2 = cyl(0.12,0.15,9,6,M.metal); p2.position.set(13,4.5,z+20); scene.add(p2);
-      const b2 = box(0.8,0.06,0.3,M.neonW); b2.position.set(11,8.7,z+20); scene.add(b2);
-      const sl2 = new THREE.PointLight(0xffeebb,2.5,22,2); sl2.position.set(11,8.5,z+20); scene.add(sl2);
+      const sl1 = new THREE.PointLight(0xffeebb,6,40,1.5); sl1.position.set(-11,8.5,z); scene.add(sl1);
+      // Light pool on ground (warm bounce)
+      const glow1 = new THREE.PointLight(0xffddaa,2,15,2); glow1.position.set(-8,0.5,z); scene.add(glow1);
+      // Right side (offset)
+      const p2 = cyl(0.12,0.15,9,6,M.metal); p2.position.set(13,4.5,z+17); scene.add(p2);
+      const b2 = box(0.8,0.06,0.3,M.neonW); b2.position.set(11,8.7,z+17); scene.add(b2);
+      const sl2 = new THREE.PointLight(0xffeebb,6,40,1.5); sl2.position.set(11,8.5,z+17); scene.add(sl2);
+      const glow2 = new THREE.PointLight(0xffddaa,2,15,2); glow2.position.set(8,0.5,z+17); scene.add(glow2);
     }
 
     // ─── NEON SIGNS ───────────────────────────────────
@@ -285,10 +290,10 @@
     for (let z = -RL+70; z < 40; z += 55+Math.random()*25) {
       const m1 = neonMats[~~(Math.random()*4)];
       const s1 = box(3+Math.random()*3, 1+Math.random(), 0.08, m1); s1.position.set(-20.5, 10+Math.random()*12, z); scene.add(s1);
-      const g1 = new THREE.PointLight(m1.emissive.getHex(),1.5,15,2); g1.position.set(-19.5,s1.position.y,z); scene.add(g1); neonLights.push(g1);
+      const g1 = new THREE.PointLight(m1.emissive.getHex(),3,25,2); g1.position.set(-19.5,s1.position.y,z); scene.add(g1); neonLights.push(g1);
       const m2 = neonMats[~~(Math.random()*4)];
       const s2 = box(3+Math.random()*4, 1+Math.random()*1.5, 0.08, m2); s2.position.set(20.5, 8+Math.random()*15, z+25); s2.rotation.y=Math.PI; scene.add(s2);
-      const g2 = new THREE.PointLight(m2.emissive.getHex(),1.5,15,2); g2.position.set(19.5,s2.position.y,z+25); scene.add(g2); neonLights.push(g2);
+      const g2 = new THREE.PointLight(m2.emissive.getHex(),3,25,2); g2.position.set(19.5,s2.position.y,z+25); scene.add(g2); neonLights.push(g2);
     }
 
     // ─── EFFECTS ──────────────────────────────────────
@@ -310,10 +315,10 @@
     const pL2B = new THREE.PointLight(0x0044ff,6,30,2); pL2B.position.set(5,2.2,22); scene.add(pL2B);
     const pL3R = new THREE.PointLight(0xff0000,5,25,2); pL3R.position.set(0,2.2,35); scene.add(pL3R);
     const pL3B = new THREE.PointLight(0x0044ff,5,25,2); pL3B.position.set(0,2.2,35); scene.add(pL3B);
-    const hl1 = new THREE.PointLight(0xffeedd,4,40,2); hl1.position.set(2,0.8,3); scene.add(hl1);
-    const hl2 = new THREE.PointLight(0xffeedd,4,40,2); hl2.position.set(4,0.8,3); scene.add(hl2);
-    scene.add(new THREE.AmbientLight(0x1a1a33, 0.4));
-    scene.add(new THREE.HemisphereLight(0x151530, 0x050508, 0.25));
+    const hl1 = new THREE.PointLight(0xffeedd,8,60,1.5); hl1.position.set(2,0.8,3); scene.add(hl1);
+    const hl2 = new THREE.PointLight(0xffeedd,8,60,1.5); hl2.position.set(4,0.8,3); scene.add(hl2);
+    scene.add(new THREE.AmbientLight(0x222244, 0.6));
+    scene.add(new THREE.HemisphereLight(0x1a1a35, 0x0a0a10, 0.4));
     const moon = new THREE.DirectionalLight(0x334466, 0.4);
     moon.position.set(30,80,50); moon.castShadow=true;
     moon.shadow.mapSize.set(1024,1024);
@@ -440,7 +445,7 @@
       const expBase = parseFloat(expSlider.value) / 100;
 
       // Exposure: dark at night, brighter in day
-      renderer.toneMappingExposure = 0.35 + expBase * 0.4 + dayF * 0.5;
+      renderer.toneMappingExposure = 0.5 + expBase * 0.5 + dayF * 0.4;
 
       // Sun/moon: cool blue at night → warm white at day, intensity ramps up
       moon.intensity = 0.15 + dayF * 2.0;
