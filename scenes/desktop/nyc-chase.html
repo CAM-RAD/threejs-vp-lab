@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.2</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.3</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.2</div>
+  <div id="info">NYC Chase — VP Lab v4.3</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -184,18 +184,19 @@
     const RL = 400;
     const roadMesh = box(24, 0.1, RL, M.road); roadMesh.position.set(0, 0, -RL/2+50); roadMesh.receiveShadow = true; scene.add(roadMesh);
 
-    // Real-time ground reflections (Reflector — mirrors the scene onto the road)
+    // Wet road reflection — subtle, not mirror-like
+    // Low-res Reflector (256px) + very low opacity = diffused wet look
     const reflectorGeo = new THREE.PlaneGeometry(24, RL);
     const reflector = new Reflector(reflectorGeo, {
       clipBias: 0.003,
-      textureWidth: 512,
-      textureHeight: 512,
-      color: 0x111118,
+      textureWidth: 256,
+      textureHeight: 256,
+      color: 0x060608,
     });
     reflector.rotation.x = -Math.PI / 2;
     reflector.position.set(0, 0.08, -RL / 2 + 50);
     reflector.material.transparent = true;
-    reflector.material.opacity = 0.3;
+    reflector.material.opacity = 0.12;
     scene.add(reflector);
 
     // Road lines (solid long meshes, not dashes)
@@ -524,7 +525,7 @@
         if (pos[i * 3 + 1] < 0) { pos[i * 3 + 1] = 40 + Math.random() * 10; pos[i * 3] = (Math.random() - 0.5) * 80; }
       }
       rainGeo.attributes.position.needsUpdate = true;
-      reflector.material.opacity = 0.1 + ri * 0.35;
+      reflector.material.opacity = 0.05 + ri * 0.15;
 
       // Neon: auto-dim during day, full at night
       const ni = parseFloat(neonSlider.value) / 100;
