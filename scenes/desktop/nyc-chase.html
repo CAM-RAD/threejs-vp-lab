@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.4</div>
+    <div class="sub">Virtual Production Lab &mdash; v3.5</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.4</div>
+  <div id="info">NYC Chase — VP Lab v3.5</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -374,27 +374,72 @@
       requestAnimationFrame(animate);
       const dt=clock.getDelta(), t=clock.getElapsedTime(), speed=parseFloat(spdSlider.value)/100;
 
-      // Time of day
+      // Time of day — natural lighting transitions
       const tod = parseFloat(todSlider.value);
       updateSky(tod);
-      const dayF = Math.max(0, (tod-30)/70); // 0 at night, 1 at full day
-      renderer.toneMappingExposure = 0.3 + parseFloat(expSlider.value)/100*0.6 + dayF*0.4;
-      moon.intensity = 0.15 + dayF * 1.5;
+      const dayF = Math.max(0, (tod - 30) / 70); // 0=night, 1=day
+      const nightF = 1 - dayF;
+      const expBase = parseFloat(expSlider.value) / 100;
 
-      const pInt=parseFloat(policeSlider.value)/100, flash=Math.sin(t*14);
-      pL1R.intensity=(flash>0?10:0)*pInt; pL1B.intensity=(flash>0?0:10)*pInt;
-      pL2R.intensity=(flash>0.15?8:0)*pInt; pL2B.intensity=(flash>0.15?0:8)*pInt;
-      pL3R.intensity=(flash>-0.1?7:0)*pInt; pL3B.intensity=(flash>-0.1?0:7)*pInt;
-      const ri=parseFloat(rainSlider.value)/100;
-      rainMat.opacity=ri*0.55;
-      const pos=rainGeo.attributes.position.array;
-      for(let i=0;i<RC;i++){pos[i*3+1]-=rv[i]*(1+speed);if(pos[i*3+1]<0){pos[i*3+1]=40+Math.random()*10;pos[i*3]=(Math.random()-0.5)*80;}}
-      rainGeo.attributes.position.needsUpdate=true;
-      reflect.material.opacity=ri*0.35;
-      const ni=parseFloat(neonSlider.value)/100;
-      M.neonR.emissiveIntensity=1+ni*2.5; M.neonB.emissiveIntensity=1+ni*2.5;
-      M.neonP.emissiveIntensity=1+ni*2.5; M.neonC.emissiveIntensity=1+ni*2.5;
-      for(const n of neonLights) n.intensity=1+ni*2;
+      // Exposure: dark at night, brighter in day
+      renderer.toneMappingExposure = 0.35 + expBase * 0.4 + dayF * 0.5;
+
+      // Sun/moon: cool blue at night → warm white at day, intensity ramps up
+      moon.intensity = 0.15 + dayF * 2.0;
+      moon.color.setRGB(
+        0.2 + dayF * 0.8,   // R: blueish → warm
+        0.25 + dayF * 0.7,  // G
+        0.35 + dayF * 0.55  // B: blue tint at night
+      );
+      // Sun position shifts higher during day
+      moon.position.set(30 + dayF * 40, 30 + dayF * 80, 50);
+
+      // Ambient: dark blue at night → neutral warm at day
+      scene.children.forEach(c => {
+        if (c.isAmbientLight) {
+          c.intensity = 0.2 + dayF * 0.6;
+          c.color.setRGB(0.1 + dayF * 0.4, 0.1 + dayF * 0.38, 0.15 + dayF * 0.35);
+        }
+        if (c.isHemisphereLight) {
+          c.intensity = 0.15 + dayF * 0.5;
+        }
+      });
+
+      // Fog density: thicker at night, thinner at day
+      scene.fog.density = 0.007 - dayF * 0.003;
+
+      // Window emissive: bright at night, dim during day
+      M.winLit.emissiveIntensity = 0.1 + nightF * 0.5;
+      M.winCool.emissiveIntensity = 0.05 + nightF * 0.3;
+
+      // Police lights
+      const pInt = parseFloat(policeSlider.value) / 100, flash = Math.sin(t * 14);
+      pL1R.intensity = (flash > 0 ? 10 : 0) * pInt;
+      pL1B.intensity = (flash > 0 ? 0 : 10) * pInt;
+      pL2R.intensity = (flash > 0.15 ? 8 : 0) * pInt;
+      pL2B.intensity = (flash > 0.15 ? 0 : 8) * pInt;
+      pL3R.intensity = (flash > -0.1 ? 7 : 0) * pInt;
+      pL3B.intensity = (flash > -0.1 ? 0 : 7) * pInt;
+
+      // Rain
+      const ri = parseFloat(rainSlider.value) / 100;
+      rainMat.opacity = ri * 0.55;
+      const pos = rainGeo.attributes.position.array;
+      for (let i = 0; i < RC; i++) {
+        pos[i * 3 + 1] -= rv[i] * (1 + speed);
+        if (pos[i * 3 + 1] < 0) { pos[i * 3 + 1] = 40 + Math.random() * 10; pos[i * 3] = (Math.random() - 0.5) * 80; }
+      }
+      rainGeo.attributes.position.needsUpdate = true;
+      reflect.material.opacity = ri * 0.35;
+
+      // Neon: auto-dim during day, full at night
+      const ni = parseFloat(neonSlider.value) / 100;
+      const neonF = ni * (0.3 + nightF * 0.7); // dims to 30% in full daylight
+      M.neonR.emissiveIntensity = 0.5 + neonF * 2.5;
+      M.neonB.emissiveIntensity = 0.5 + neonF * 2.5;
+      M.neonP.emissiveIntensity = 0.5 + neonF * 2.0;
+      M.neonC.emissiveIntensity = 0.5 + neonF * 2.0;
+      for (const n of neonLights) n.intensity = 0.3 + neonF * 2;
       for(const s of steamVents){s.scale.x=0.7+Math.sin(t*3+s.position.x)*0.4;s.scale.z=0.7+Math.cos(t*2.5)*0.4;s.material.opacity=0.08+Math.sin(t*2)*0.04;}
       if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=45;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
       orbit.update(); renderer.render(scene,camera);
