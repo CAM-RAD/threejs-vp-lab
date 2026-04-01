@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.6</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.4</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.6</div>
+  <div id="info">NYC Chase — VP Lab v4.4</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -162,23 +162,8 @@
       awnG:    new THREE.MeshStandardMaterial({ color: 0x226633, roughness: 0.9 }),
     };
 
-    // ─── GROUND PAVEMENT (behind sidewalks, between buildings) ──
-    const RL = 400;
-    const paveMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.92 });
-    // Left city block ground
-    const paveL = new THREE.Mesh(new THREE.PlaneGeometry(80, RL + 50), paveMat);
-    paveL.rotation.x = -Math.PI / 2;
-    paveL.position.set(-60, -0.1, -RL / 2 + 50);
-    paveL.receiveShadow = true;
-    scene.add(paveL);
-    // Right city block ground
-    const paveR = new THREE.Mesh(new THREE.PlaneGeometry(80, RL + 50), paveMat);
-    paveR.rotation.x = -Math.PI / 2;
-    paveR.position.set(60, -0.1, -RL / 2 + 50);
-    paveR.receiveShadow = true;
-    scene.add(paveR);
-
     // ─── ROAD ─────────────────────────────────────────
+    const RL = 400;
     const roadMesh = box(24, 0.1, RL, M.road); roadMesh.position.set(0, 0, -RL/2+50); roadMesh.receiveShadow = true; scene.add(roadMesh);
     const reflect = box(24, 0.01, RL, M.puddle); reflect.position.set(0, 0.07, -RL/2+50); scene.add(reflect);
 
