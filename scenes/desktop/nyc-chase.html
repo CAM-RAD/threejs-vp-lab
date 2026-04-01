@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v5.1</div>
+    <div class="sub">Virtual Production Lab &mdash; v5.0</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v5.1</div>
+  <div id="info">NYC Chase — VP Lab v5.0</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -377,25 +377,13 @@
       const m = cache[f].clone();
       const bb = new THREE.Box3().setFromObject(m);
       const sz = new THREE.Vector3(); bb.getSize(sz);
-
-      // Normalize height AND check proportions
-      // Real car: ~1.5m tall, ~4.5m long, ~1.8m wide
-      // If scaled model is much wider than long, it's facing sideways
-      m.scale.setScalar(h / Math.max(sz.y, 0.01));
-
-      // Measure after scale to check proportions
+      // Auto-detect: if model is wider (X) than long (Z), it faces sideways — correct by 90°
+      let correction = 0;
+      if (sz.x > sz.z * 1.3) correction = Math.PI / 2;
+      m.scale.setScalar(h/Math.max(sz.y,0.01));
       const bb2 = new THREE.Box3().setFromObject(m);
-      const sz2 = new THREE.Vector3(); bb2.getSize(sz2);
-
-      // Position on ground
-      m.position.set(x, y - bb2.min.y, z);
-      m.rotation.y = ry || 0;
-
-      // Auto-correct sideways models: if X-extent > Z-extent * 1.5, rotate 90deg
-      if (sz2.x > sz2.z * 1.5) {
-        m.rotation.y += Math.PI / 2;
-      }
-
+      m.position.set(x, y-bb2.min.y, z);
+      m.rotation.y = (ry||0) + correction;
       m.traverse(c => { if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
       scene.add(m);
       return m;
