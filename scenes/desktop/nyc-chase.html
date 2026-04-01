@@ -26,18 +26,18 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.1</div>
+    <div class="sub">Virtual Production Lab &mdash; v3.2</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.1</div>
+  <div id="info">NYC Chase — VP Lab v3.2</div>
   <div id="controls">
+    <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
     <label>Neon <input type="range" id="neon" min="0" max="100" value="80"></label>
     <label>Speed <input type="range" id="spd" min="0" max="100" value="45"></label>
-    <label>Exposure <input type="range" id="exposure" min="0" max="100" value="60"></label>
-    <label>Moonlight <input type="range" id="moonlight" min="0" max="100" value="35"></label>
+    <label>Exposure <input type="range" id="exposure" min="0" max="100" value="55"></label>
     <label>Police Lights <input type="range" id="policeInt" min="0" max="100" value="80"></label>
     <label><input type="checkbox" id="fly" checked> Chase Cam</label>
   </div>
@@ -120,50 +120,95 @@
       const w = box(8, 0.15, RL, M.sidewalk); w.position.set(s*16.5, 0.08, -RL/2+50); w.receiveShadow = true; scene.add(w);
     }
 
-    // ─── BUILDINGS (window STRIPS, not individual boxes) ──
-    const bricks = [M.brick1, M.brick2, M.brick3];
+    // ─── WINDOW TEXTURE GENERATOR ──────────────────────
+    function makeWindowTex(cols, rows, litRatio) {
+      const cv = document.createElement('canvas');
+      const cw = cols * 8, ch = rows * 8;
+      cv.width = cw; cv.height = ch;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#0a0a12'; ctx.fillRect(0, 0, cw, ch);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const rnd = Math.random();
+          if (rnd < litRatio) {
+            ctx.fillStyle = rnd < litRatio * 0.6 ? '#ffcc66' : '#88bbff';
+          } else {
+            ctx.fillStyle = '#111118';
+          }
+          ctx.fillRect(c * 8 + 1, r * 8 + 1, 6, 5);
+        }
+      }
+      const tex = new THREE.CanvasTexture(cv);
+      tex.magFilter = THREE.NearestFilter;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    // ─── BUILDINGS (textured facades, setbacks) ───────
     const shopMats = [M.shopR, M.shopG, M.shopB];
 
-    function addBldg(x, z, w, d, h, mat) {
+    function addBldg(x, z, w, d, h) {
       const g = new THREE.Group();
       const dir = x > 0 ? -1 : 1;
-      // Body
-      const body = box(w, h, d, mat); body.position.y = h/2; body.castShadow = true; g.add(body);
+      const cols = Math.max(3, ~~(w / 2.5));
+      const rows = Math.max(3, ~~(h / 3.5));
+
+      // Facade material with window texture
+      const winTex = makeWindowTex(cols, rows, 0.45 + Math.random() * 0.2);
+      const facadeMat = new THREE.MeshStandardMaterial({
+        color: 0x1a1a22, map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.4,
+        roughness: 0.75,
+      });
+
+      // Main tower
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), facadeMat);
+      body.position.y = h / 2; body.castShadow = true; g.add(body);
+
+      // Setback (shorter top section on tall buildings)
+      if (h > 40 && Math.random() > 0.4) {
+        const sh = h * (0.3 + Math.random() * 0.2);
+        const sw2 = w * 0.65, sd2 = d * 0.65;
+        const winTex2 = makeWindowTex(~~(sw2/2.5), ~~(sh/3.5), 0.5);
+        const setMat = new THREE.MeshStandardMaterial({
+          color: 0x181825, map: winTex2, emissive: 0xffffff, emissiveMap: winTex2, emissiveIntensity: 0.35,
+          roughness: 0.7,
+        });
+        const setback = new THREE.Mesh(new THREE.BoxGeometry(sw2, sh, sd2), setMat);
+        setback.position.y = h + sh / 2; setback.castShadow = true; g.add(setback);
+        // Antenna/spire on some
+        if (Math.random() > 0.6) {
+          const ant = cyl(0.1, 0.05, 8 + Math.random() * 10, 4, M.metal);
+          ant.position.y = h + sh + 5; g.add(ant);
+        }
+      }
+
       // Cornice
-      const corn = box(w+0.3, 0.4, d+0.3, M.metal); corn.position.y = h; g.add(corn);
+      const corn = box(w + 0.3, 0.5, d + 0.3, M.metal); corn.position.y = h; g.add(corn);
+
       // Storefront
-      const sf = box(w+0.05, 4.5, d+0.05, shopMats[~~(Math.random()*3)]); sf.position.y = 2.25; g.add(sf);
+      const sf = box(w + 0.05, 4.5, d + 0.05, shopMats[~~(Math.random() * 3)]); sf.position.y = 2.25; g.add(sf);
       // Store window
-      const sw = box(w*0.7, 2.5, 0.1, Math.random()>0.3 ? M.winLit : M.winCool);
-      sw.position.set(0, 2.5, dir*(d/2+0.06)); g.add(sw);
+      const swin = box(w * 0.7, 2.5, 0.1, Math.random() > 0.3 ? M.winLit : M.winCool);
+      swin.position.set(0, 2.5, dir * (d / 2 + 0.06)); g.add(swin);
       // Awning
-      const aw = box(w*0.75, 0.08, 1.8, Math.random()>0.5 ? M.awnR : M.awnG);
-      aw.position.set(0, 4.5, dir*(d/2+0.9)); g.add(aw);
-      // Window strips (1 per ~14 floor-units)
-      for (let s = 0; s < Math.floor((h-5)/14); s++) {
-        const wm = Math.random()>0.5 ? M.winLit : Math.random()>0.4 ? M.winCool : M.glass;
-        const ws = box(w*0.75, 10, 0.08, wm);
-        ws.position.set(0, 10+s*14, dir*(d/2+0.04)); g.add(ws);
-      }
-      // Water tower
-      if (h > 40 && Math.random() > 0.6) {
-        const tk = cyl(1.3, 1.3, 2.2, 6, M.metal); tk.position.set(w*0.2, h+2.5, 0); g.add(tk);
-      }
+      const aw = box(w * 0.75, 0.08, 1.8, Math.random() > 0.5 ? M.awnR : M.awnG);
+      aw.position.set(0, 4.5, dir * (d / 2 + 0.9)); g.add(aw);
+
       g.position.set(x, 0, z); scene.add(g);
     }
 
-    // ~14 buildings per side
-    for (let z = -RL+50; z < 50; z += 25+Math.random()*8) {
-      addBldg(-21-5-Math.random()*3, z, 13+Math.random()*7, 10+Math.random()*4, 25+Math.random()*60, bricks[~~(Math.random()*3)]);
+    // ~13 buildings per side
+    for (let z = -RL + 50; z < 50; z += 26 + Math.random() * 8) {
+      addBldg(-21 - 5 - Math.random() * 3, z, 13 + Math.random() * 7, 10 + Math.random() * 4, 25 + Math.random() * 65);
     }
-    for (let z = -RL+55; z < 50; z += 23+Math.random()*10) {
-      addBldg(21+5+Math.random()*3, z, 12+Math.random()*8, 9+Math.random()*5, 20+Math.random()*65, bricks[~~(Math.random()*3)]);
+    for (let z = -RL + 55; z < 50; z += 24 + Math.random() * 10) {
+      addBldg(21 + 5 + Math.random() * 3, z, 12 + Math.random() * 8, 9 + Math.random() * 5, 20 + Math.random() * 70);
     }
-    // Glass towers (back)
-    for (let z = -RL+80; z < 30; z += 70+Math.random()*30) {
-      const h = 80+Math.random()*100;
-      const t1 = box(16,h,12,M.glass); t1.position.set(-50,h/2,z); t1.castShadow=true; scene.add(t1);
-      const t2 = box(16,h*0.85,12,M.glass); t2.position.set(50,h*0.85/2,z+20); t2.castShadow=true; scene.add(t2);
+    // Glass towers (back row)
+    for (let z = -RL + 80; z < 30; z += 70 + Math.random() * 30) {
+      const th = 80 + Math.random() * 100;
+      const t1 = box(16, th, 12, M.glass); t1.position.set(-50, th / 2, z); t1.castShadow = true; scene.add(t1);
+      const t2 = box(16, th * 0.85, 12, M.glass); t2.position.set(50, th * 0.85 / 2, z + 20); t2.castShadow = true; scene.add(t2);
     }
 
     // ─── STREETLIGHTS (PointLight) ────────────────────
@@ -265,26 +310,73 @@
       const m = cache[f].clone();
       const bb = new THREE.Box3().setFromObject(m);
       const sz = new THREE.Vector3(); bb.getSize(sz);
+      // Auto-detect: if model is wider (X) than long (Z), it faces sideways — correct by 90°
+      let correction = 0;
+      if (sz.x > sz.z * 1.3) correction = Math.PI / 2;
       m.scale.setScalar(h/Math.max(sz.y,0.01));
       const bb2 = new THREE.Box3().setFromObject(m);
       m.position.set(x, y-bb2.min.y, z);
-      m.rotation.y = ry||0;
+      m.rotation.y = (ry||0) + correction;
       m.traverse(c => { if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
       scene.add(m);
     }
 
     // ─── CONTROLS ─────────────────────────────────────
+    const todSlider=document.getElementById('tod');
     const rainSlider=document.getElementById('rain'), neonSlider=document.getElementById('neon');
     const spdSlider=document.getElementById('spd'), expSlider=document.getElementById('exposure');
-    const moonSlider=document.getElementById('moonlight'), policeSlider=document.getElementById('policeInt');
+    const policeSlider=document.getElementById('policeInt');
     const flyCheck=document.getElementById('fly');
     let chaseZ=35;
+
+    // Sky gradient
+    const skyCV = document.createElement('canvas'); skyCV.width=2; skyCV.height=256;
+    const skyCtx = skyCV.getContext('2d');
+    function lerpC(a,b,t){
+      const p=c=>[parseInt(c.slice(1,3),16),parseInt(c.slice(3,5),16),parseInt(c.slice(5,7),16)];
+      const[ar,ag,ab]=p(a),[br,bg,bb]=p(b);
+      const r=~~(ar+(br-ar)*t),g=~~(ag+(bg-ag)*t),bl=~~(ab+(bb-ab)*t);
+      return`#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${bl.toString(16).padStart(2,'0')}`;
+    }
+    function updateSky(tod) {
+      const t = tod/100;
+      const grad = skyCtx.createLinearGradient(0,0,0,256);
+      if (t < 0.3) { // Night
+        grad.addColorStop(0,'#020208'); grad.addColorStop(0.7,'#050510'); grad.addColorStop(1,'#0a0a18');
+      } else if (t < 0.55) { // Dawn
+        const f=(t-0.3)/0.25;
+        grad.addColorStop(0,lerpC('#020208','#1a1535',f));
+        grad.addColorStop(0.5,lerpC('#050510','#4a2040',f));
+        grad.addColorStop(1,lerpC('#0a0a18','#cc5522',f));
+      } else if (t < 0.75) { // Golden
+        const f=(t-0.55)/0.2;
+        grad.addColorStop(0,lerpC('#1a1535','#4477aa',f));
+        grad.addColorStop(0.5,lerpC('#4a2040','#88aacc',f));
+        grad.addColorStop(1,lerpC('#cc5522','#ddeeff',f));
+      } else { // Day
+        const f=(t-0.75)/0.25;
+        grad.addColorStop(0,lerpC('#4477aa','#6699cc',f));
+        grad.addColorStop(0.5,lerpC('#88aacc','#aaccee',f));
+        grad.addColorStop(1,lerpC('#ddeeff','#eef4ff',f));
+      }
+      skyCtx.fillStyle=grad; skyCtx.fillRect(0,0,2,256);
+      if (!scene.background || scene.background.isColor) scene.background = new THREE.CanvasTexture(skyCV);
+      else scene.background.needsUpdate = true;
+      const px = skyCtx.getImageData(0,200,1,1).data;
+      scene.fog.color.setRGB(px[0]/255,px[1]/255,px[2]/255);
+    }
 
     function animate() {
       requestAnimationFrame(animate);
       const dt=clock.getDelta(), t=clock.getElapsedTime(), speed=parseFloat(spdSlider.value)/100;
-      renderer.toneMappingExposure = 0.3+parseFloat(expSlider.value)/100*0.8;
-      moon.intensity = parseFloat(moonSlider.value)/100*1.2;
+
+      // Time of day
+      const tod = parseFloat(todSlider.value);
+      updateSky(tod);
+      const dayF = Math.max(0, (tod-30)/70); // 0 at night, 1 at full day
+      renderer.toneMappingExposure = 0.3 + parseFloat(expSlider.value)/100*0.6 + dayF*0.4;
+      moon.intensity = 0.15 + dayF * 1.5;
+
       const pInt=parseFloat(policeSlider.value)/100, flash=Math.sin(t*14);
       pL1R.intensity=(flash>0?10:0)*pInt; pL1B.intensity=(flash>0?0:10)*pInt;
       pL2R.intensity=(flash>0.15?8:0)*pInt; pL2B.intensity=(flash>0.15?0:8)*pInt;
