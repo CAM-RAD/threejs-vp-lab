@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v3.3</div>
+    <div class="sub">Virtual Production Lab &mdash; v3.4</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v3.3</div>
+  <div id="info">NYC Chase — VP Lab v3.4</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -245,12 +245,15 @@
     }
 
     // ─── LIGHTS ───────────────────────────────────────
-    const pL1R = new THREE.PointLight(0xff0000,8,35,2); pL1R.position.set(-4,2.2,25); scene.add(pL1R);
-    const pL1B = new THREE.PointLight(0x0044ff,8,35,2); pL1B.position.set(-4,2.2,25); scene.add(pL1B);
-    const pL2R = new THREE.PointLight(0xff0000,6,30,2); pL2R.position.set(5,2.2,40); scene.add(pL2R);
-    const pL2B = new THREE.PointLight(0x0044ff,6,30,2); pL2B.position.set(5,2.2,40); scene.add(pL2B);
-    const hl1 = new THREE.PointLight(0xffeedd,4,40,2); hl1.position.set(2,0.8,-7); scene.add(hl1);
-    const hl2 = new THREE.PointLight(0xffeedd,4,40,2); hl2.position.set(4,0.8,-7); scene.add(hl2);
+    // Police lights — matched to cruiser positions (z=15, z=22, z=35)
+    const pL1R = new THREE.PointLight(0xff0000,8,35,2); pL1R.position.set(-3,2.2,15); scene.add(pL1R);
+    const pL1B = new THREE.PointLight(0x0044ff,8,35,2); pL1B.position.set(-3,2.2,15); scene.add(pL1B);
+    const pL2R = new THREE.PointLight(0xff0000,6,30,2); pL2R.position.set(5,2.2,22); scene.add(pL2R);
+    const pL2B = new THREE.PointLight(0x0044ff,6,30,2); pL2B.position.set(5,2.2,22); scene.add(pL2B);
+    const pL3R = new THREE.PointLight(0xff0000,5,25,2); pL3R.position.set(0,2.2,35); scene.add(pL3R);
+    const pL3B = new THREE.PointLight(0x0044ff,5,25,2); pL3B.position.set(0,2.2,35); scene.add(pL3B);
+    const hl1 = new THREE.PointLight(0xffeedd,4,40,2); hl1.position.set(2,0.8,3); scene.add(hl1);
+    const hl2 = new THREE.PointLight(0xffeedd,4,40,2); hl2.position.set(4,0.8,3); scene.add(hl2);
     scene.add(new THREE.AmbientLight(0x1a1a33, 0.4));
     scene.add(new THREE.HemisphereLight(0x151530, 0x050508, 0.25));
     const moon = new THREE.DirectionalLight(0x334466, 0.4);
@@ -328,7 +331,7 @@
     const spdSlider=document.getElementById('spd'), expSlider=document.getElementById('exposure');
     const policeSlider=document.getElementById('policeInt');
     const flyCheck=document.getElementById('fly');
-    let chaseZ=35;
+    let chaseZ=45;
 
     // Sky gradient
     const skyCV = document.createElement('canvas'); skyCV.width=2; skyCV.height=256;
@@ -381,6 +384,7 @@
       const pInt=parseFloat(policeSlider.value)/100, flash=Math.sin(t*14);
       pL1R.intensity=(flash>0?10:0)*pInt; pL1B.intensity=(flash>0?0:10)*pInt;
       pL2R.intensity=(flash>0.15?8:0)*pInt; pL2B.intensity=(flash>0.15?0:8)*pInt;
+      pL3R.intensity=(flash>-0.1?7:0)*pInt; pL3B.intensity=(flash>-0.1?0:7)*pInt;
       const ri=parseFloat(rainSlider.value)/100;
       rainMat.opacity=ri*0.55;
       const pos=rainGeo.attributes.position.array;
@@ -392,36 +396,55 @@
       M.neonP.emissiveIntensity=1+ni*2.5; M.neonC.emissiveIntensity=1+ni*2.5;
       for(const n of neonLights) n.intensity=1+ni*2;
       for(const s of steamVents){s.scale.x=0.7+Math.sin(t*3+s.position.x)*0.4;s.scale.z=0.7+Math.cos(t*2.5)*0.4;s.material.opacity=0.08+Math.sin(t*2)*0.04;}
-      if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=35;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
+      if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=45;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
       orbit.update(); renderer.render(scene,camera);
     }
 
     // ─── START ────────────────────────────────────────
     preloadAll().then(() => {
       loadText.textContent='Placing assets...';
-      // Chase vehicles
-      place('sports-car.glb',3,0.05,-5,1.4,Math.PI);
-      place('charger-police.glb',-4,0.05,25,1.5,Math.PI);
-      place('charger-police.glb',5,0.05,40,1.5,Math.PI);
-      // Oncoming traffic
-      place('yellow-cab.glb',-9,0.05,-40,1.5,0);
-      place('blue-sedan.glb',-3,0.05,-80,1.5,0);
-      place('kitsune-car.glb',-8,0.05,-140,1.4,0);
-      place('smashing-taxi.glb',-4,0.05,-200,1.5,0);
-      place('yellow-cab.glb',-9,0.05,-270,1.5,0);
-      // Same direction
-      place('garbage-truck.glb',7,0.05,-50,2.8,Math.PI);
-      place('tahoe.glb',4,0.05,-100,1.6,Math.PI);
-      place('peugeot-rally.glb',8,0.05,-160,1.4,Math.PI);
-      place('yellow-cab.glb',3,0.05,-230,1.5,Math.PI);
-      place('bus.glb',7,0.05,-300,2.8,Math.PI);
-      // Motorcycle
-      place('motorcycle.glb',1,0.05,-15,1.2,Math.PI+0.2);
-      // Parked
-      place('blue-sedan.glb',-14,0.15,-30,1.5,Math.PI/2);
-      place('tahoe.glb',14,0.15,-70,1.6,-Math.PI/2);
-      place('smashing-taxi.glb',-14,0.15,-130,1.5,Math.PI/2);
-      place('kitsune-car.glb',14,0.15,-190,1.4,-Math.PI/2);
+      // === THE CHASE (camera follows this group) ===
+      // Lead car being chased
+      place('sports-car.glb',3,0.05,5,1.4,Math.PI);
+      // Police in hot pursuit — RIGHT BEHIND the lead
+      place('charger-police.glb',-3,0.05,15,1.5,Math.PI);
+      place('charger-police.glb',5,0.05,22,1.5,Math.PI);
+      // Third cruiser further back
+      place('charger-police.glb',0,0.05,35,1.5,Math.PI);
+      // Motorcycle weaving through
+      place('motorcycle.glb',1,0.05,10,1.2,Math.PI+0.15);
+
+      // === ONCOMING TRAFFIC (toward camera, left lanes) ===
+      place('yellow-cab.glb',-9,0.05,-20,1.5,0);
+      place('blue-sedan.glb',-3,0.05,-55,1.5,0);
+      place('kitsune-car.glb',-8,0.05,-90,1.4,0);
+      place('smashing-taxi.glb',-4,0.05,-125,1.5,0);
+      place('yellow-cab.glb',-9,0.05,-165,1.5,0);
+      place('blue-sedan.glb',-3,0.05,-210,1.5,0);
+      place('kitsune-car.glb',-8,0.05,-255,1.4,0);
+      place('smashing-taxi.glb',-4,0.05,-300,1.5,0);
+
+      // === SAME DIRECTION TRAFFIC (right lanes, ahead of chase) ===
+      place('garbage-truck.glb',7,0.05,-30,2.8,Math.PI);
+      place('tahoe.glb',4,0.05,-65,1.6,Math.PI);
+      place('yellow-cab.glb',8,0.05,-105,1.5,Math.PI);
+      place('peugeot-rally.glb',4,0.05,-145,1.4,Math.PI);
+      place('bus.glb',8,0.05,-190,2.8,Math.PI);
+      place('blue-sedan.glb',4,0.05,-235,1.5,Math.PI);
+      place('tahoe.glb',7,0.05,-280,1.6,Math.PI);
+      place('smashing-taxi.glb',4,0.05,-320,1.5,Math.PI);
+
+      // === PARKED CARS (both sides, lots of them) ===
+      place('blue-sedan.glb',-14,0.15,10,1.5,Math.PI/2);
+      place('tahoe.glb',14,0.15,-10,1.6,-Math.PI/2);
+      place('smashing-taxi.glb',-14,0.15,-40,1.5,Math.PI/2);
+      place('kitsune-car.glb',14,0.15,-75,1.4,-Math.PI/2);
+      place('yellow-cab.glb',-14,0.15,-110,1.5,Math.PI/2);
+      place('peugeot-rally.glb',14,0.15,-150,1.4,-Math.PI/2);
+      place('blue-sedan.glb',-14,0.15,-185,1.5,Math.PI/2);
+      place('tahoe.glb',14,0.15,-225,1.6,-Math.PI/2);
+      place('kitsune-car.glb',-14,0.15,-265,1.4,Math.PI/2);
+      place('smashing-taxi.glb',14,0.15,-310,1.5,-Math.PI/2);
       place('traffic-light.glb',-13,0.15,-20,5,0);
       place('traffic-light.glb',13,0.15,-140,5,Math.PI);
       place('traffic-light.glb',-13,0.15,-260,5,0);
