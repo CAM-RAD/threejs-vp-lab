@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.1</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.4</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.1</div>
+  <div id="info">NYC Chase — VP Lab v4.4</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -135,7 +135,7 @@
 
     // ─── MATERIALS ────────────────────────────────────
     const M = {
-      road:    new THREE.MeshStandardMaterial({ color: 0x181820, roughness: 0.2, metalness: 0.08 }),
+      road:    new THREE.MeshStandardMaterial({ color: 0x181820, roughness: 0.85, metalness: 0.0 }),
       sidewalk:new THREE.MeshStandardMaterial({ color: 0x444442, roughness: 0.75 }),
       curb:    new THREE.MeshStandardMaterial({ color: 0x4a4a48, roughness: 0.8 }),
       lineW:   new THREE.MeshStandardMaterial({ color: 0xcccccc, emissive: 0x444444, emissiveIntensity: 0.4 }),
@@ -154,7 +154,7 @@
       neonC:   new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.0 }),
       neonW:   new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.2 }),
       steam:   new THREE.MeshStandardMaterial({ color: 0x999999, transparent: true, opacity: 0.12 }),
-      puddle:  new THREE.MeshStandardMaterial({ color: 0x101018, roughness: 0.01, metalness: 0.7, transparent: true, opacity: 0.45 }),
+      puddle:  new THREE.MeshStandardMaterial({ color: 0x101018, roughness: 0.4, metalness: 0.1, transparent: true, opacity: 0.25 }),
       shopR:   new THREE.MeshStandardMaterial({ color: 0x661111, emissive: 0x331111, emissiveIntensity: 0.3 }),
       shopG:   new THREE.MeshStandardMaterial({ color: 0x115511, emissive: 0x113311, emissiveIntensity: 0.3 }),
       shopB:   new THREE.MeshStandardMaterial({ color: 0x111155, emissive: 0x111133, emissiveIntensity: 0.3 }),
