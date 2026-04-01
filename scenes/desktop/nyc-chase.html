@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.4</div>
+    <div class="sub">Virtual Production Lab &mdash; v5.0</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.4</div>
+  <div id="info">NYC Chase — VP Lab v5.0</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -386,7 +386,11 @@
       m.rotation.y = (ry||0) + correction;
       m.traverse(c => { if(c.isMesh){c.castShadow=true;c.receiveShadow=true;} });
       scene.add(m);
+      return m;
     }
+
+    // Vehicle animation tracking
+    const movingCars = []; // { model, speed, minZ, maxZ }
 
     // ─── CONTROLS ─────────────────────────────────────
     const todSlider=document.getElementById('tod');
@@ -504,6 +508,29 @@
       M.neonC.emissiveIntensity = 0.5 + neonF * 2.0;
       for (const n of neonLights) n.intensity = 0.3 + neonF * 2;
       for(const s of steamVents){s.scale.x=0.7+Math.sin(t*3+s.position.x)*0.4;s.scale.z=0.7+Math.cos(t*2.5)*0.4;s.material.opacity=0.08+Math.sin(t*2)*0.04;}
+
+      // Animate vehicles
+      const carSpeed = 8 + speed * 20;
+      for (const v of movingCars) {
+        if (!v.model) continue;
+        v.model.position.z += v.speed * dt * (0.5 + speed);
+        // Loop when out of range
+        if (v.speed < 0 && v.model.position.z < v.minZ) v.model.position.z = v.maxZ;
+        if (v.speed > 0 && v.model.position.z > v.maxZ) v.model.position.z = v.minZ;
+      }
+
+      // Move police lights with cruisers
+      if (movingCars.length > 0) {
+        const p1 = movingCars.find(v => v.id === 'cop1');
+        const p2 = movingCars.find(v => v.id === 'cop2');
+        const p3 = movingCars.find(v => v.id === 'cop3');
+        const lead = movingCars.find(v => v.id === 'lead');
+        if (p1 && p1.model) { pL1R.position.z = p1.model.position.z; pL1B.position.z = p1.model.position.z; }
+        if (p2 && p2.model) { pL2R.position.z = p2.model.position.z; pL2B.position.z = p2.model.position.z; }
+        if (p3 && p3.model) { pL3R.position.z = p3.model.position.z; pL3B.position.z = p3.model.position.z; }
+        if (lead && lead.model) { hl1.position.z = lead.model.position.z - 2; hl2.position.z = lead.model.position.z - 2; }
+      }
+
       if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=45;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
       // Bloom control
       const bloomVal = parseFloat(document.getElementById('bloom').value) / 100;
@@ -517,36 +544,42 @@
     // ─── START ────────────────────────────────────────
     preloadAll().then(() => {
       loadText.textContent='Placing assets...';
-      // === THE CHASE (camera follows this group) ===
-      // Lead car being chased
-      place('sports-car.glb',3,0.05,5,1.4,Math.PI);
-      // Police in hot pursuit — RIGHT BEHIND the lead
-      place('charger-police.glb',-3,0.05,15,1.5,Math.PI);
-      place('charger-police.glb',5,0.05,22,1.5,Math.PI);
-      // Third cruiser further back
-      place('charger-police.glb',0,0.05,35,1.5,Math.PI);
-      // Motorcycle weaving through
-      place('motorcycle.glb',1,0.05,10,1.2,Math.PI+0.15);
+      // === THE CHASE (all move forward together) ===
+      const chaseSpd = -18; // Fast, heading -Z
+      const m_lead = place('sports-car.glb',3,0.05,5,1.4,Math.PI);
+      movingCars.push({ model: m_lead, speed: chaseSpd, minZ: -RL+50, maxZ: 50, id: 'lead' });
+      const m_cop1 = place('charger-police.glb',-3,0.05,15,1.5,Math.PI);
+      movingCars.push({ model: m_cop1, speed: chaseSpd, minZ: -RL+50, maxZ: 50, id: 'cop1' });
+      const m_cop2 = place('charger-police.glb',5,0.05,22,1.5,Math.PI);
+      movingCars.push({ model: m_cop2, speed: chaseSpd, minZ: -RL+50, maxZ: 50, id: 'cop2' });
+      const m_cop3 = place('charger-police.glb',0,0.05,35,1.5,Math.PI);
+      movingCars.push({ model: m_cop3, speed: chaseSpd, minZ: -RL+50, maxZ: 50, id: 'cop3' });
+      const m_moto = place('motorcycle.glb',1,0.05,10,1.2,Math.PI+0.15);
+      movingCars.push({ model: m_moto, speed: chaseSpd * 1.05, minZ: -RL+50, maxZ: 50, id: 'moto' });
 
-      // === ONCOMING TRAFFIC (toward camera, left lanes) ===
-      place('yellow-cab.glb',-9,0.05,-20,1.5,0);
-      place('blue-sedan.glb',-3,0.05,-55,1.5,0);
-      place('kitsune-car.glb',-8,0.05,-90,1.4,0);
-      place('smashing-taxi.glb',-4,0.05,-125,1.5,0);
-      place('yellow-cab.glb',-9,0.05,-165,1.5,0);
-      place('blue-sedan.glb',-3,0.05,-210,1.5,0);
-      place('kitsune-car.glb',-8,0.05,-255,1.4,0);
-      place('smashing-taxi.glb',-4,0.05,-300,1.5,0);
+      // === ONCOMING TRAFFIC (toward camera = +Z) ===
+      const oncomingSpd = 14;
+      const oncomingFiles = ['yellow-cab.glb','blue-sedan.glb','kitsune-car.glb','smashing-taxi.glb'];
+      const oncomingX = [-9, -3, -8, -4, -9, -3, -8, -4];
+      for (let i = 0; i < 8; i++) {
+        const z = -20 - i * 45;
+        const m = place(oncomingFiles[i % 4], oncomingX[i], 0.05, z, 1.5, 0);
+        movingCars.push({ model: m, speed: oncomingSpd, minZ: -RL+30, maxZ: 60, id: 'onc'+i });
+      }
 
-      // === SAME DIRECTION TRAFFIC (right lanes, ahead of chase) ===
-      place('garbage-truck.glb',7,0.05,-30,2.8,Math.PI);
-      place('tahoe.glb',4,0.05,-65,1.6,Math.PI);
-      place('yellow-cab.glb',8,0.05,-105,1.5,Math.PI);
-      place('peugeot-rally.glb',4,0.05,-145,1.4,Math.PI);
-      place('bus.glb',8,0.05,-190,2.8,Math.PI);
-      place('blue-sedan.glb',4,0.05,-235,1.5,Math.PI);
-      place('tahoe.glb',7,0.05,-280,1.6,Math.PI);
-      place('smashing-taxi.glb',4,0.05,-320,1.5,Math.PI);
+      // === SAME DIRECTION TRAFFIC (ahead of chase = -Z, slower) ===
+      const sameSpd = -10;
+      const sameCars = [
+        ['garbage-truck.glb',7,2.8], ['tahoe.glb',4,1.6], ['yellow-cab.glb',8,1.5],
+        ['peugeot-rally.glb',4,1.4], ['bus.glb',8,2.8], ['blue-sedan.glb',4,1.5],
+        ['tahoe.glb',7,1.6], ['smashing-taxi.glb',4,1.5],
+      ];
+      for (let i = 0; i < sameCars.length; i++) {
+        const [f, x, h] = sameCars[i];
+        const z = -30 - i * 42;
+        const m = place(f, x, 0.05, z, h, Math.PI);
+        movingCars.push({ model: m, speed: sameSpd, minZ: -RL+30, maxZ: 60, id: 'same'+i });
+      }
 
       // === PARKED CARS (both sides, lots of them) ===
       place('blue-sedan.glb',-14,0.15,10,1.5,Math.PI/2);
