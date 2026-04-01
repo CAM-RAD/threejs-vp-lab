@@ -26,12 +26,12 @@
 <body>
   <div id="loader">
     <h1>NYC Chase</h1>
-    <div class="sub">Virtual Production Lab &mdash; v4.3</div>
+    <div class="sub">Virtual Production Lab &mdash; v4.1</div>
     <div id="bar-wrap"><div id="bar-fill"></div></div>
     <div id="load-text">Initializing...</div>
     <button id="skip-btn">SKIP &mdash; Start Scene</button>
   </div>
-  <div id="info">NYC Chase — VP Lab v4.3</div>
+  <div id="info">NYC Chase — VP Lab v4.1</div>
   <div id="controls">
     <label>Time of Day <input type="range" id="tod" min="0" max="100" value="15"></label>
     <label>Rain <input type="range" id="rain" min="0" max="100" value="50"></label>
@@ -59,7 +59,6 @@
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
-    import { Reflector } from 'three/addons/objects/Reflector.js';
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -68,7 +67,6 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.85;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -132,22 +130,6 @@
     const chromaticPass = new ShaderPass(chromaticShader);
     composer.addPass(chromaticPass);
 
-    // Film grain (subtle, cinematic texture)
-    const grainShader = {
-      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, amount: { value: 0.06 } },
-      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform float amount;
-        varying vec2 vUv;
-        float rand(vec2 co){ return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453); }
-        void main(){
-          vec4 c=texture2D(tDiffuse,vUv);
-          float grain=rand(vUv*time)*amount;
-          gl_FragColor=vec4(c.rgb+grain-amount*0.5,c.a);
-        }`
-    };
-    const grainPass = new ShaderPass(grainShader);
-    composer.addPass(grainPass);
-
     function box(w,h,d,m){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); }
     function cyl(rt,rb,h,s,m){ return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,s),m); }
 
@@ -183,21 +165,7 @@
     // ─── ROAD ─────────────────────────────────────────
     const RL = 400;
     const roadMesh = box(24, 0.1, RL, M.road); roadMesh.position.set(0, 0, -RL/2+50); roadMesh.receiveShadow = true; scene.add(roadMesh);
-
-    // Wet road reflection — subtle, not mirror-like
-    // Low-res Reflector (256px) + very low opacity = diffused wet look
-    const reflectorGeo = new THREE.PlaneGeometry(24, RL);
-    const reflector = new Reflector(reflectorGeo, {
-      clipBias: 0.003,
-      textureWidth: 256,
-      textureHeight: 256,
-      color: 0x060608,
-    });
-    reflector.rotation.x = -Math.PI / 2;
-    reflector.position.set(0, 0.08, -RL / 2 + 50);
-    reflector.material.transparent = true;
-    reflector.material.opacity = 0.12;
-    scene.add(reflector);
+    const reflect = box(24, 0.01, RL, M.puddle); reflect.position.set(0, 0.07, -RL/2+50); scene.add(reflect);
 
     // Road lines (solid long meshes, not dashes)
     for (const [x,m] of [[-0.25,M.lineY],[0.25,M.lineY],[-11.8,M.lineW],[11.8,M.lineW]]) {
@@ -525,7 +493,7 @@
         if (pos[i * 3 + 1] < 0) { pos[i * 3 + 1] = 40 + Math.random() * 10; pos[i * 3] = (Math.random() - 0.5) * 80; }
       }
       rainGeo.attributes.position.needsUpdate = true;
-      reflector.material.opacity = 0.05 + ri * 0.15;
+      reflect.material.opacity = ri * 0.35;
 
       // Neon: auto-dim during day, full at night
       const ni = parseFloat(neonSlider.value) / 100;
@@ -537,9 +505,6 @@
       for (const n of neonLights) n.intensity = 0.3 + neonF * 2;
       for(const s of steamVents){s.scale.x=0.7+Math.sin(t*3+s.position.x)*0.4;s.scale.z=0.7+Math.cos(t*2.5)*0.4;s.material.opacity=0.08+Math.sin(t*2)*0.04;}
       if(flyCheck.checked){chaseZ-=dt*16*(0.4+speed);if(chaseZ<-RL+80)chaseZ=45;camera.position.set(3+Math.sin(t*0.4)*2.5,3.5+Math.sin(t*0.6)*1.5,chaseZ+18);orbit.target.set(0,1.5,chaseZ-8);}
-      // Film grain time
-      grainPass.uniforms.time.value = t;
-
       // Bloom control
       const bloomVal = parseFloat(document.getElementById('bloom').value) / 100;
       bloomPass.strength = bloomVal * 1.6;
