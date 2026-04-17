@@ -51,7 +51,7 @@
     <h1>Greek Temple</h1>
     <p>Three.js r184 &mdash; Virtual Production</p>
   </div>
-  <div id="version">v1.0</div>
+  <div id="version">v1.1</div>
 
   <script type="importmap">
   { "imports": {
@@ -457,45 +457,47 @@
       temple.add(crossBeam);
     });
 
-    // ─── ROOF (simple pediment at each end) ────────────
-    function createPediment(x, faceDir) {
-      const group = new THREE.Group();
-      const peakH = 2.5;
-      const baseW = ROW_SPACING + 2.5;
+    // ─── ROOF (pediments at each end + sloped planes) ───
+    const roofPeakH = 2.5;
+    const roofBaseW = ROW_SPACING + 2.5;
+    const roofBaseY = entablatureY + 1.35;
 
-      // Triangle shape
+    // Pediments — triangular gable at each end
+    function createPediment(x) {
       const shape = new THREE.Shape();
-      shape.moveTo(-baseW / 2, 0);
-      shape.lineTo(baseW / 2, 0);
-      shape.lineTo(0, peakH);
+      shape.moveTo(-roofBaseW / 2, 0);
+      shape.lineTo(roofBaseW / 2, 0);
+      shape.lineTo(0, roofPeakH);
       shape.closePath();
 
-      const extrudeSettings = { depth: 0.3, bevelEnabled: false };
-      const pedGeo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      const pedGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.35, bevelEnabled: false });
+      // Center the extrusion
+      pedGeo.translate(0, 0, -0.175);
       const pediment = new THREE.Mesh(pedGeo, marbleMat);
-      pediment.rotation.y = Math.PI / 2 * faceDir;
-      pediment.position.set(x, entablatureY + 1.35, 0);
+      // Pediment faces along X axis — rotate so triangle is in YZ plane facing X
+      pediment.rotation.y = Math.PI / 2;
+      pediment.position.set(x, roofBaseY, 0);
       pediment.castShadow = true;
-      group.add(pediment);
-
-      return group;
+      return pediment;
     }
-    temple.add(createPediment(startX - 1.0, 1));
-    temple.add(createPediment(startX + (COLS - 1) * COL_SPACING + 1.0, -1));
+    temple.add(createPediment(startX - 1.0));
+    temple.add(createPediment(startX + (COLS - 1) * COL_SPACING + 1.0));
 
-    // Roof beams (simple ridge)
+    // Ridge beam
+    const ridgeLen = (COLS - 1) * COL_SPACING + 3;
     const ridgeBeam = new THREE.Mesh(
-      new THREE.BoxGeometry((COLS - 1) * COL_SPACING + 3, 0.2, 0.3),
+      new THREE.BoxGeometry(ridgeLen, 0.2, 0.3),
       marbleMat
     );
-    ridgeBeam.position.set(0, entablatureY + 1.35 + 2.5, 0);
+    ridgeBeam.position.set(0, roofBaseY + roofPeakH, 0);
     ridgeBeam.castShadow = true;
     temple.add(ridgeBeam);
 
     // Sloped roof planes
-    const roofLen = (COLS - 1) * COL_SPACING + 3.5;
-    const roofWidth = Math.sqrt((ROW_SPACING / 2 + 1.8) ** 2 + 2.5 ** 2);
-    const roofAngle = Math.atan2(2.5, ROW_SPACING / 2 + 1.8);
+    const roofLen = ridgeLen + 0.5;
+    const halfSpan = roofBaseW / 2;
+    const roofSlope = Math.sqrt(halfSpan * halfSpan + roofPeakH * roofPeakH);
+    const roofAngle = Math.atan2(roofPeakH, halfSpan);
 
     const roofMat = new THREE.MeshStandardMaterial({
       color: 0xd4c4a0,
@@ -507,16 +509,15 @@
 
     [-1, 1].forEach(side => {
       const roofPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(roofLen, roofWidth),
+        new THREE.PlaneGeometry(roofLen, roofSlope),
         roofMat
       );
-      roofPlane.position.set(
-        0,
-        entablatureY + 1.35 + 1.25,
-        side * (ROW_SPACING / 4 + 0.5)
-      );
-      roofPlane.rotation.x = side * (Math.PI / 2 - roofAngle);
-      roofPlane.rotation.z = 0;
+      // Position at midpoint of the slope
+      const midY = roofBaseY + roofPeakH / 2;
+      const midZ = side * halfSpan / 2;
+      roofPlane.position.set(0, midY, midZ);
+      // Tilt the plane to match the slope angle
+      roofPlane.rotation.x = -side * (Math.PI / 2 - roofAngle);
       roofPlane.castShadow = true;
       roofPlane.receiveShadow = true;
       temple.add(roofPlane);
