@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTML-in-Canvas Demo — VP Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #0a0a0f; font-family: system-ui, sans-serif; }
+    canvas { display: block; }
+
+    /* Status badge */
+    #status {
+      position: fixed; top: 16px; left: 16px; z-index: 30;
+      padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+      backdrop-filter: blur(12px);
+    }
+    #status.native {
+      background: rgba(5,150,105,0.2); border: 1px solid rgba(5,150,105,0.4); color: #6ee7b7;
+    }
+    #status.fallback {
+      background: rgba(245,158,11,0.2); border: 1px solid rgba(245,158,11,0.4); color: #fcd34d;
+    }
+
+    #instructions {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 30;
+      padding: 8px 20px; border-radius: 8px; font-size: 11px; color: #888;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* ===== THE LIVE HTML PANELS (these become 3D textures) ===== */
+
+    .live-panel {
+      position: absolute; left: -9999px; /* hidden from view, still in DOM */
+      width: 480px; height: 320px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    /* Panel 1: VP Control Surface */
+    #panel-controls {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #e2e8f0; padding: 24px;
+    }
+    #panel-controls h2 {
+      font-size: 16px; color: #38bdf8; margin-bottom: 12px;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    #panel-controls .row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    #panel-controls .row label { font-size: 13px; color: #94a3b8; }
+    #panel-controls .row .val { font-size: 14px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+    #panel-controls input[type="range"] {
+      width: 100%; margin: 4px 0; accent-color: #38bdf8;
+    }
+    #panel-controls .live-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #22c55e; margin-right: 6px; animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+
+    /* Panel 2: Scene Info */
+    #panel-scene {
+      background: linear-gradient(135deg, #1a0a2e, #2d1b4e);
+      color: #e2e8f0; padding: 24px;
+    }
+    #panel-scene h2 {
+      font-size: 16px; color: #a78bfa; margin-bottom: 16px;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    #panel-scene .metric {
+      display: inline-block; text-align: center; width: 30%; margin-bottom: 12px;
+    }
+    #panel-scene .metric .big {
+      font-size: 28px; font-weight: 800; color: #c4b5fd;
+      font-variant-numeric: tabular-nums;
+    }
+    #panel-scene .metric .label {
+      font-size: 10px; color: #7c6faa; text-transform: uppercase; letter-spacing: 1px;
+    }
+    #panel-scene .bar-row { margin: 6px 0; }
+    #panel-scene .bar-label { font-size: 11px; color: #a78bfa; margin-bottom: 2px; }
+    #panel-scene .bar-bg {
+      height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;
+    }
+    #panel-scene .bar-fill {
+      height: 100%; border-radius: 3px; transition: width 0.5s ease;
+    }
+
+    /* Panel 3: Live Clock */
+    #panel-clock {
+      background: linear-gradient(135deg, #0a1a0a, #1a2e1a);
+      color: #e2e8f0; padding: 24px; text-align: center;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+    }
+    #panel-clock .time {
+      font-size: 64px; font-weight: 800; color: #4ade80;
+      font-variant-numeric: tabular-nums; letter-spacing: 2px;
+      text-shadow: 0 0 30px rgba(74,222,128,0.3);
+    }
+    #panel-clock .date {
+      font-size: 14px; color: #6b8f6b; margin-top: 8px; letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    #panel-clock .label {
+      font-size: 11px; color: #4a6a4a; margin-top: 16px;
+      letter-spacing: 3px; text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Status badge -->
+<div id="status"></div>
+<div id="instructions">Drag to orbit. Panels update live. Click sliders on the 3D monitors to interact.</div>
+
+<!-- ===== LIVE HTML PANELS (source content for 3D textures) ===== -->
+
+<div id="panel-controls" class="live-panel" layoutsubtree>
+  <h2><span class="live-dot"></span> VP Control Surface</h2>
+  <div class="row"><label>Exposure</label><span class="val" id="exp-val">0.0</span></div>
+  <input type="range" id="exp-slider" min="-3" max="3" step="0.1" value="0" oninput="document.getElementById('exp-val').textContent = parseFloat(this.value).toFixed(1)">
+  <div class="row"><label>White Balance</label><span class="val" id="wb-val">5600K</span></div>
+  <input type="range" id="wb-slider" min="2000" max="10000" step="100" value="5600" oninput="document.getElementById('wb-val').textContent = this.value + 'K'">
+  <div class="row"><label>ISO</label><span class="val" id="iso-val">800</span></div>
+  <input type="range" id="iso-slider" min="100" max="12800" step="100" value="800" oninput="document.getElementById('iso-val').textContent = this.value">
+  <div class="row"><label>Focus Distance</label><span class="val" id="focus-val">2.4m</span></div>
+  <input type="range" id="focus-slider" min="0.3" max="20" step="0.1" value="2.4" oninput="document.getElementById('focus-val').textContent = parseFloat(this.value).toFixed(1) + 'm'">
+  <div style="margin-top:8px; font-size:11px; color:#64748b;">Camera A — Sony FX6 — 4K 120fps</div>
+</div>
+
+<div id="panel-scene" class="live-panel" layoutsubtree>
+  <h2>Scene Telemetry</h2>
+  <div>
+    <div class="metric"><div class="big" id="fps-val">60</div><div class="label">FPS</div></div>
+    <div class="metric"><div class="big" id="draw-val">24</div><div class="label">Draw Calls</div></div>
+    <div class="metric"><div class="big" id="tri-val">1.2M</div><div class="label">Triangles</div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">GPU Load</div>
+    <div class="bar-bg"><div class="bar-fill" id="gpu-bar" style="width:45%; background: linear-gradient(90deg, #a78bfa, #7c3aed);"></div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">VRAM Usage</div>
+    <div class="bar-bg"><div class="bar-fill" id="vram-bar" style="width:62%; background: linear-gradient(90deg, #f472b6, #ec4899);"></div></div>
+  </div>
+  <div class="bar-row">
+    <div class="bar-label">CPU Thread</div>
+    <div class="bar-bg"><div class="bar-fill" id="cpu-bar" style="width:33%; background: linear-gradient(90deg, #34d399, #059669);"></div></div>
+  </div>
+  <div style="margin-top:8px; font-size:11px; color:#7c6faa;">Scene: VP_Studio_A — Take 14</div>
+</div>
+
+<div id="panel-clock" class="live-panel" layoutsubtree>
+  <div class="label">Timecode</div>
+  <div class="time" id="clock-time">00:00:00</div>
+  <div class="date" id="clock-date">--</div>
+  <div class="label" style="margin-top:24px;">Session Duration</div>
+  <div style="font-size:24px; font-weight:700; color:#6b8f6b; margin-top:4px; font-variant-numeric:tabular-nums;" id="session-dur">00:00:00</div>
+</div>
+
+<!-- ===== THREE.JS SCENE ===== -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- Detect HTML-in-Canvas support ---
+const testCanvas = document.createElement('canvas');
+const testCtx = testCanvas.getContext('2d');
+const hasNativeAPI = typeof testCtx.drawElementImage === 'function';
+
+const statusEl = document.getElementById('status');
+if (hasNativeAPI) {
+  statusEl.className = 'native';
+  statusEl.textContent = 'HTML-in-Canvas API detected (native)';
+} else {
+  statusEl.className = 'fallback';
+  statusEl.textContent = 'Fallback mode — enable chrome://flags/#enable-html-in-canvas for native API';
+}
+
+// --- Renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+document.body.appendChild(renderer.domElement);
+
+// --- Scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0f);
+scene.fog = new THREE.FogExp2(0x0a0a0f, 0.08);
+
+// --- Camera ---
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.2, 5);
+
+// --- Controls ---
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.target.set(0, 0.8, 0);
+controls.minDistance = 2;
+controls.maxDistance = 12;
+
+// --- Lights ---
+const ambient = new THREE.AmbientLight(0x334466, 0.5);
+scene.add(ambient);
+
+const key = new THREE.DirectionalLight(0xddeeff, 0.8);
+key.position.set(3, 4, 2);
+scene.add(key);
+
+const fill = new THREE.PointLight(0x6644aa, 0.4, 10);
+fill.position.set(-3, 2, 1);
+scene.add(fill);
+
+// --- Floor ---
+const floorGeo = new THREE.PlaneGeometry(30, 30);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x111118, roughness: 0.9, metalness: 0.1
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+// --- Grid helper ---
+const grid = new THREE.GridHelper(20, 40, 0x222233, 0x181825);
+scene.add(grid);
+
+// --- Monitor frame geometry ---
+function createMonitorFrame(w, h, depth) {
+  const group = new THREE.Group();
+
+  // Bezel
+  const bezelGeo = new THREE.BoxGeometry(w + 0.08, h + 0.08, depth);
+  const bezelMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.3, metalness: 0.8 });
+  const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+  group.add(bezel);
+
+  // Stand
+  const standGeo = new THREE.CylinderGeometry(0.02, 0.04, 0.6, 8);
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3e, roughness: 0.4, metalness: 0.7 });
+  const stand = new THREE.Mesh(standGeo, standMat);
+  stand.position.y = -h / 2 - 0.3;
+  group.add(stand);
+
+  // Base
+  const baseGeo = new THREE.CylinderGeometry(0.15, 0.18, 0.03, 16);
+  const base = new THREE.Mesh(baseGeo, standMat);
+  base.position.y = -h / 2 - 0.6;
+  group.add(base);
+
+  return group;
+}
+
+// --- Create textures from HTML panels (fallback: render to canvas) ---
+const panels = [
+  { el: document.getElementById('panel-controls'), w: 480, h: 320 },
+  { el: document.getElementById('panel-scene'), w: 480, h: 320 },
+  { el: document.getElementById('panel-clock'), w: 480, h: 320 }
+];
+
+const textures = [];
+const offscreenCanvases = [];
+
+panels.forEach((p, i) => {
+  // Fallback: create an offscreen canvas and use html2canvas-style rendering
+  // For the fallback, we render the panel's innerHTML as styled content
+  const c = document.createElement('canvas');
+  c.width = p.w * 2;  // 2x for retina
+  c.height = p.h * 2;
+  offscreenCanvases.push(c);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  textures.push(tex);
+});
+
+// --- Render HTML panels to canvas textures (fallback method) ---
+function renderPanelToCanvas(panelEl, canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  if (hasNativeAPI) {
+    // NATIVE: one-line draw
+    ctx.drawElementImage(panelEl, 0, 0, w, h);
+  } else {
+    // FALLBACK: serialize to SVG foreignObject and draw
+    // This is a simplified approach; won't capture all CSS perfectly
+    const clone = panelEl.cloneNode(true);
+    clone.removeAttribute('layoutsubtree');
+    clone.style.cssText = panelEl.style.cssText + ';' + window.getComputedStyle(panelEl).cssText;
+
+    // Use foreignObject SVG approach
+    const data = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width:${w/2}px;height:${h/2}px;transform:scale(2);transform-origin:top left;">
+            ${panelEl.outerHTML.replace(/layoutsubtree/g, '')}
+          </div>
+        </foreignObject>
+      </svg>`;
+
+    const img = new Image();
+    const blob = new Blob([data], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    img.onload = () => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+}
+
+// --- Build monitors ---
+const monitors = [];
+const monitorPositions = [
+  { x: -2.2, y: 1.4, z: 0, ry: 0.3 },
+  { x: 0, y: 1.4, z: -0.3, ry: 0 },
+  { x: 2.2, y: 1.4, z: 0, ry: -0.3 }
+];
+
+monitorPositions.forEach((pos, i) => {
+  const frame = createMonitorFrame(2, 1.33, 0.06);
+  frame.position.set(pos.x, pos.y, pos.z);
+  frame.rotation.y = pos.ry;
+  scene.add(frame);
+
+  // Screen (the textured plane)
+  const screenGeo = new THREE.PlaneGeometry(1.96, 1.29);
+  const screenMat = new THREE.MeshBasicMaterial({
+    map: textures[i],
+    toneMapped: false
+  });
+  const screen = new THREE.Mesh(screenGeo, screenMat);
+  screen.position.set(pos.x, pos.y, pos.z + 0.035);
+  screen.rotation.y = pos.ry;
+  scene.add(screen);
+  monitors.push(screen);
+
+  // Glow behind monitor
+  const glowGeo = new THREE.PlaneGeometry(2.4, 1.6);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: i === 0 ? 0x38bdf8 : i === 1 ? 0xa78bfa : 0x4ade80,
+    transparent: true, opacity: 0.04, toneMapped: false
+  });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.position.set(pos.x, pos.y, pos.z - 0.05);
+  glow.rotation.y = pos.ry;
+  scene.add(glow);
+});
+
+// --- Ambient particles ---
+const particleCount = 200;
+const particleGeo = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+for (let i = 0; i < particleCount; i++) {
+  positions[i * 3] = (Math.random() - 0.5) * 15;
+  positions[i * 3 + 1] = Math.random() * 5;
+  positions[i * 3 + 2] = (Math.random() - 0.5) * 15;
+}
+particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const particleMat = new THREE.PointsMaterial({
+  color: 0x4466aa, size: 0.02, transparent: true, opacity: 0.4
+});
+scene.add(new THREE.Points(particleGeo, particleMat));
+
+// --- Live data updates ---
+const sessionStart = Date.now();
+
+function updatePanels() {
+  // Clock
+  const now = new Date();
+  document.getElementById('clock-time').textContent =
+    now.toLocaleTimeString('en-US', { hour12: false });
+  document.getElementById('clock-date').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Session duration
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const hrs = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const secs = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('session-dur').textContent = `${hrs}:${mins}:${secs}`;
+
+  // Fake telemetry
+  const t = Date.now() * 0.001;
+  document.getElementById('fps-val').textContent = Math.round(58 + Math.sin(t) * 4);
+  document.getElementById('draw-val').textContent = Math.round(22 + Math.sin(t * 1.3) * 5);
+  document.getElementById('gpu-bar').style.width = (40 + Math.sin(t * 0.7) * 15) + '%';
+  document.getElementById('vram-bar').style.width = (58 + Math.sin(t * 0.5) * 10) + '%';
+  document.getElementById('cpu-bar').style.width = (30 + Math.sin(t * 0.9) * 12) + '%';
+}
+
+// --- Render loop ---
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  updatePanels();
+
+  // Re-render HTML panels to textures
+  panels.forEach((p, i) => {
+    renderPanelToCanvas(p.el, offscreenCanvases[i]);
+    textures[i].needsUpdate = true;
+  });
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
+</body>
+</html>
