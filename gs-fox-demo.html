@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Three.js GS Deformation — Fox</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:linear-gradient(to bottom,#000 0%,#0a0704 100%);overflow:hidden;font-family:'SF Mono','Fira Code','Consolas',monospace}
+  canvas{display:block}
+  #ui{position:fixed;top:0;left:0;right:0;padding:18px 16px 14px;text-align:center;color:rgba(255,255,255,.88);pointer-events:none;z-index:10;text-shadow:0 1px 6px rgba(0,0,0,.9);background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,transparent 100%)}
+  #ui h1{font-size:14px;font-weight:600;letter-spacing:.5px;margin-bottom:4px}
+  #ui p{font-size:10px;color:rgba(255,255,255,.4);letter-spacing:.3px}
+  #stats{position:fixed;bottom:14px;left:16px;color:rgba(255,255,255,.3);font-size:10px;pointer-events:none;z-index:10;font-family:inherit}
+  #vig{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.55) 100%);pointer-events:none;z-index:5}
+</style>
+</head>
+<body>
+<div id="ui">
+  <h1>Three.js Gaussian Splat Deformation &mdash; Red Fox</h1>
+  <p>Drag to orbit &middot; Scroll to zoom &middot; PBD soft-body deformation &middot; ~26 000 splats</p>
+</div>
+<div id="vig"></div>
+<div id="stats"></div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================================================================
+   Gaussian-Splat Fox — PBD Deformation Demo
+
+   ~26 000 particles rendered as screen-space gaussians.
+   Camera angular velocity drives spring-damper inertial forces
+   on each particle (Position-Based Dynamics). Fur, ears, and tail
+   have high softness → fluid lag. Eyes/nose are rigid.
+   Inspired by arXiv:2604.14782v1 (cage-based PBD for hair).
+   ================================================================ */
+
+const C = {
+  springK: 14, damping: 4.5, inertia: 3.2,
+  breathSpd: 1.1, breathAmp: .005,
+  tailSpd: 2.8, tailAmp: .04,
+  earTwitchSpd: 4.5, earTwitchAmp: .008,
+};
+
+// ── Renderer ──
+const R = new THREE.WebGLRenderer({ antialias:true });
+R.setSize(innerWidth, innerHeight);
+R.setPixelRatio(Math.min(devicePixelRatio, 2));
+R.setClearColor(0x000000);
+document.body.appendChild(R.domElement);
+
+// ── Scene / Camera ──
+const scene = new THREE.Scene();
+const cam   = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, .1, 100);
+cam.position.set(.7, .7, 2.4);
+
+const ctrl = new OrbitControls(cam, R.domElement);
+ctrl.target.set(0, .4, 0);
+ctrl.enableDamping = true;
+ctrl.dampingFactor = .07;
+ctrl.rotateSpeed   = .8;
+ctrl.minDistance    = .6;
+ctrl.maxDistance    = 5;
+ctrl.autoRotate      = true;
+ctrl.autoRotateSpeed = .5;
+ctrl.update();
+
+// ── Shaders ──
+const VS = `
+  attribute float aS;
+  attribute vec3  aC;
+  attribute float aF;
+  attribute float aV;
+  uniform float uPR;
+  varying vec3  vC;
+  varying float vA;
+  varying float vF;
+  void main(){
+    vC = aC; vF = aF;
+    vec4 mv = modelViewMatrix * vec4(position,1.);
+    float px = aS * uPR * (320. / -mv.z);
+    px *= 1. + aV * 14.;
+    gl_PointSize = clamp(px, 1., 90.);
+    gl_Position  = projectionMatrix * mv;
+    vA = mix(.75, .35, aF);
+  }
+`;
+const FS = `
+  varying vec3  vC;
+  varying float vA;
+  varying float vF;
+  void main(){
+    vec2 d = gl_PointCoord - .5;
+    float r2 = dot(d,d);
+    float sig = mix(7.5, 4.2, vF);
+    float a = exp(-r2 * sig) * vA;
+    if(a < .012) discard;
+    gl_FragColor = vec4(vC, a);
+  }
+`;
+
+// ── Dust shader (additive glow) ──
+const DVS = `
+  attribute float aS;
+  attribute vec3  aC;
+  uniform float uT;
+  uniform float uPR;
+  varying vec3 vC;
+  varying float vA;
+  void main(){
+    vC = aC;
+    // gentle float
+    vec3 p = position;
+    p.y += sin(uT*.3 + position.x*5.) * .02;
+    p.x += cos(uT*.2 + position.z*4.) * .015;
+    vec4 mv = modelViewMatrix * vec4(p,1.);
+    gl_PointSize = clamp(aS * uPR * (200./-mv.z), 1., 40.);
+    gl_Position = projectionMatrix * mv;
+    // subtle pulse
+    vA = .15 + .08 * sin(uT*1.5 + position.y*10.);
+  }
+`;
+const DFS = `
+  varying vec3 vC;
+  varying float vA;
+  void main(){
+    vec2 d = gl_PointCoord - .5;
+    float a = exp(-dot(d,d)*5.) * vA;
+    if(a<.01) discard;
+    gl_FragColor = vec4(vC, a);
+  }
+`;
+
+// ── Helpers ──
+function rng(a,b){ return a+Math.random()*(b-a); }
+function insideE(cx,cy,cz,rx,ry,rz){
+  let x,y,z;
+  do{x=Math.random()*2-1;y=Math.random()*2-1;z=Math.random()*2-1;}while(x*x+y*y+z*z>1);
+  return [cx+x*rx,cy+y*ry,cz+z*rz];
+}
+function surfFur(cx,cy,cz,rx,ry,rz){
+  const th=Math.random()*Math.PI*2, ph=Math.acos(Math.random()*2-1);
+  const sx=Math.sin(ph)*Math.cos(th), sy=Math.sin(ph)*Math.sin(th), sz=Math.cos(ph);
+  const f=.012+Math.random()*.095;
+  return [cx+sx*(rx+f), cy+sy*(ry+f), cz+sz*(rz+f)];
+}
+
+// ── Fox body parts ──
+// [name, cx,cy,cz, rx,ry,rz, count, r,g,b, furWeight, furRatio]
+const P = [
+  // Torso
+  ['body',     0,.44,0,     .24,.26,.34, 3500, .93,.55,.14, .9,.42],
+  ['bodyLo',   0,.26,.04,   .22,.16,.26, 1600, .91,.52,.12, .85,.35],
+  ['haunch',   0,.32,-.14,  .20,.18,.16, 800,  .90,.50,.12, .8,.3],
+  // Chest / belly / ruff (cream-white)
+  ['chest',    0,.50,.16,   .14,.16,.11, 1400, .97,.94,.89, .92,.5],
+  ['belly',    0,.28,.12,   .15,.10,.14, 800,  .96,.93,.87, .85,.4],
+  ['ruff',     0,.58,.13,   .15,.09,.11, 1200, .98,.96,.91, .96,.6],
+  // Head
+  ['head',     0,.73,.18,   .155,.145,.155, 2600, .94,.57,.15, .8,.35],
+  ['cheekL',  -.095,.68,.27, .055,.055,.045, 420, .97,.94,.88, .7,.3],
+  ['cheekR',   .095,.68,.27, .055,.055,.045, 420, .97,.94,.88, .7,.3],
+  ['chin',     0,.64,.28,   .04,.03,.04,  300, .96,.93,.88, .6,.25],
+  ['brow',     0,.79,.20,   .11,.04,.09,  400, .92,.55,.14, .65,.25],
+  // Snout
+  ['snout',    0,.67,.33,   .055,.045,.09, 480, .96,.93,.88, .4,.15],
+  ['snTop',    0,.70,.35,   .035,.025,.06, 200, .93,.56,.15, .3,.1],
+  ['nose',     0,.67,.41,   .022,.016,.015, 95, .07,.05,.04, 0,0],
+  // Mouth line
+  ['mouth',    0,.65,.38,   .02,.004,.015,  40, .15,.10,.08, 0,0],
+  // Eyes
+  ['eyeL',   -.055,.745,.31, .019,.017,.013, 70, .10,.07,.04, 0,0],
+  ['eyeR',    .055,.745,.31, .019,.017,.013, 70, .10,.07,.04, 0,0],
+  ['irisL',  -.055,.745,.32, .013,.013,.006, 50, .80,.55,.10, 0,0],
+  ['irisR',   .055,.745,.32, .013,.013,.006, 50, .80,.55,.10, 0,0],
+  ['specL',  -.050,.750,.325,.005,.005,.003, 15, .99,.99,.98, 0,0],
+  ['specR',   .050,.750,.325,.005,.005,.003, 15, .99,.99,.98, 0,0],
+  // Eyebrows (slight ridge)
+  ['browL',  -.06,.77,.28,  .02,.008,.015, 80, .90,.52,.12, .3,.1],
+  ['browR',   .06,.77,.28,  .02,.008,.015, 80, .90,.52,.12, .3,.1],
+  // Ears
+  ['earL',   -.10,.91,.13,  .038,.085,.028, 520, .92,.55,.14, .88,.42],
+  ['earR',    .10,.91,.13,  .038,.085,.028, 520, .92,.55,.14, .88,.42],
+  ['earTipL',-.10,.97,.12,  .022,.03,.018,  170, .14,.11,.09, .6,.3],
+  ['earTipR', .10,.97,.12,  .022,.03,.018,  170, .14,.11,.09, .6,.3],
+  ['earInL', -.09,.89,.15,  .022,.05,.013,  200, .96,.78,.72, .3,.1],
+  ['earInR',  .09,.89,.15,  .022,.05,.013,  200, .96,.78,.72, .3,.1],
+  // Front legs (orange upper, black lower "socks")
+  ['fLegUL', -.11,.28,.20,  .04,.14,.04,   420, .91,.53,.13, .65,.25],
+  ['fLegUR',  .11,.28,.20,  .04,.14,.04,   420, .91,.53,.13, .65,.25],
+  ['fLegLL', -.11,.10,.20,  .032,.08,.032, 260, .11,.09,.07, .5,.2],
+  ['fLegLR',  .11,.10,.20,  .032,.08,.032, 260, .11,.09,.07, .5,.2],
+  ['pawFL',  -.11,.025,.22, .038,.024,.042, 160, .09,.07,.05, .4,.2],
+  ['pawFR',   .11,.025,.22, .038,.024,.042, 160, .09,.07,.05, .4,.2],
+  // Back legs (tucked, sitting)
+  ['bLegL',  -.14,.20,-.08, .058,.10,.075, 520, .89,.51,.12, .7,.3],
+  ['bLegR',   .14,.20,-.08, .058,.10,.075, 520, .89,.51,.12, .7,.3],
+  ['pawBL',  -.15,.07,.03,  .038,.028,.045, 160, .09,.07,.05, .4,.2],
+  ['pawBR',   .15,.07,.03,  .038,.028,.045, 160, .09,.07,.05, .4,.2],
+  // Shoulders / hips
+  ['shldrL', -.16,.42,.10,  .06,.06,.06,   280, .92,.54,.14, .75,.3],
+  ['shldrR',  .16,.42,.10,  .06,.06,.06,   280, .92,.54,.14, .75,.3],
+  ['hipL',   -.16,.32,-.12, .06,.06,.06,   280, .90,.52,.13, .7,.3],
+  ['hipR',    .16,.32,-.12, .06,.06,.06,   280, .90,.52,.13, .7,.3],
+  // Tail — big bushy, curling right, white tip
+  ['tailBs',  .06,.38,-.34, .065,.065,.10, 700, .94,.57,.15, .97,.55],
+  ['tailMd',  .15,.33,-.43, .08,.08,.10,   900, .93,.56,.14, .98,.6],
+  ['tailTp',  .24,.30,-.48, .07,.07,.07,   700, .98,.96,.92, 1.,.65],
+  // Whiskers
+  ['whkL',   -.10,.67,.38,  .08,.004,.004, 30, .98,.97,.96, 0,0],
+  ['whkR',    .10,.67,.38,  .08,.004,.004, 30, .98,.97,.96, 0,0],
+];
+
+// ── Ground — mossy forest floor ──
+const GROUND_N = 3200;
+// Mushrooms: red cap + white stem + white spots
+const SHROOMS = [
+  { x:-.38, z:.28, h:.06, cap:.035 },
+  { x:.32, z:-.18, h:.055, cap:.03 },
+  { x:-.22, z:-.35, h:.045, cap:.025 },
+  { x:.42, z:.10, h:.05, cap:.028 },
+];
+const SHROOM_N = 350;
+// Leaves
+const LEAVES = [
+  { x:-.30, z:.05, col:[.88,.45,.12] },
+  { x:.15, z:.30, col:[.85,.30,.10] },
+  { x:.35, z:-.30, col:[.90,.65,.15] },
+  { x:-.10, z:-.40, col:[.82,.35,.08] },
+  { x:.25, z:.15, col:[.88,.55,.10] },
+  { x:-.40, z:-.15, col:[.80,.25,.08] },
+];
+const LEAF_N = 250;
+const PEBBLE_N = 150;
+const DUST_N = 250;
+
+// Count totals
+let foxTotal = 0;
+for(const p of P) foxTotal += p[7];
+const sceneTotal = foxTotal + GROUND_N + SHROOM_N + LEAF_N + PEBBLE_N;
+const totalAll = sceneTotal + DUST_N;
+
+// Allocate
+const pos  = new Float32Array(sceneTotal*3);
+const rest = new Float32Array(sceneTotal*3);
+const vel  = new Float32Array(sceneTotal*3);
+const col  = new Float32Array(sceneTotal*3);
+const szA  = new Float32Array(sceneTotal);
+const furA = new Float32Array(sceneTotal);
+const sftA = new Float32Array(sceneTotal);
+const vmA  = new Float32Array(sceneTotal);
+
+const ranges = {};
+let idx = 0;
+
+// ── Generate fox particles ──
+for(const p of P){
+  const [nm,cx,cy,cz,rx,ry,rz,cnt,cr,cg,cb,fw,fr] = p;
+  const start = idx;
+  const nFur = Math.floor(cnt*fr), nCore = cnt-nFur;
+
+  for(let i=0;i<nCore;i++){
+    const [x,y,z] = insideE(cx,cy,cz,rx,ry,rz);
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    const v=.92+Math.random()*.16;
+    col[j]=cr*v; col[j+1]=cg*v; col[j+2]=cb*v;
+    szA[idx]=.020+Math.random()*.013;
+    furA[idx]=0; sftA[idx]=fw*.3;
+    idx++;
+  }
+  for(let i=0;i<nFur;i++){
+    const [x,y,z] = surfFur(cx,cy,cz,rx,ry,rz);
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    const v=1.+Math.random()*.15;
+    col[j]=Math.min(1,cr*v); col[j+1]=Math.min(1,cg*v); col[j+2]=Math.min(1,cb*v);
+    szA[idx]=.026+Math.random()*.02;
+    furA[idx]=1; sftA[idx]=fw*.85;
+    idx++;
+  }
+  ranges[nm]={start,end:idx};
+}
+
+// ── Ground (moss) ──
+const groundStart = idx;
+for(let i=0;i<GROUND_N;i++){
+  const x=rng(-.7,.7), z=rng(-.6,.6);
+  const y=-.02+Math.random()*.01;
+  const j=idx*3;
+  pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+  // Mossy greens + brown dirt patches
+  const dirt = Math.random()<.25;
+  if(dirt){
+    const v=.85+Math.random()*.2;
+    col[j]=.35*v; col[j+1]=.28*v; col[j+2]=.18*v;
+  } else {
+    const v=.8+Math.random()*.3;
+    col[j]=.18*v; col[j+1]=(.32+Math.random()*.12)*v; col[j+2]=.12*v;
+  }
+  szA[idx]=.011+Math.random()*.008;
+  furA[idx]=0; sftA[idx]=.08;
+  idx++;
+}
+
+// ── Mushrooms ──
+for(const sh of SHROOMS){
+  const stemN = 30, capN = Math.floor(SHROOM_N/SHROOMS.length)-30;
+  // Stem
+  for(let i=0;i<stemN;i++){
+    const x=sh.x+rng(-.008,.008), z=sh.z+rng(-.008,.008);
+    const y=rng(0,sh.h);
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    col[j]=.92; col[j+1]=.88; col[j+2]=.82;
+    szA[idx]=.008+Math.random()*.005; furA[idx]=0; sftA[idx]=.05;
+    idx++;
+  }
+  // Cap (hemisphere)
+  for(let i=0;i<capN;i++){
+    const th=Math.random()*Math.PI*2, ph=Math.random()*Math.PI*.5;
+    const cr=sh.cap;
+    const x=sh.x+Math.sin(ph)*Math.cos(th)*cr;
+    const z=sh.z+Math.sin(ph)*Math.sin(th)*cr;
+    const y=sh.h+Math.cos(ph)*cr*.6;
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    // Red with white spots
+    const spot = Math.random()<.2;
+    if(spot){ col[j]=.95; col[j+1]=.93; col[j+2]=.90; }
+    else { col[j]=.85+Math.random()*.1; col[j+1]=.12+Math.random()*.08; col[j+2]=.08; }
+    szA[idx]=.007+Math.random()*.005; furA[idx]=0; sftA[idx]=.05;
+    idx++;
+  }
+}
+
+// ── Fallen leaves ──
+const perLeaf = Math.floor(LEAF_N/LEAVES.length);
+for(const lf of LEAVES){
+  for(let i=0;i<perLeaf;i++){
+    const ang=Math.random()*Math.PI*2, r=Math.random()*.035;
+    const x=lf.x+Math.cos(ang)*r*1.8;
+    const z=lf.z+Math.sin(ang)*r;
+    const y=-.005+Math.random()*.005;
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    const v=.9+Math.random()*.2;
+    col[j]=lf.col[0]*v; col[j+1]=lf.col[1]*v; col[j+2]=lf.col[2]*v;
+    szA[idx]=.008+Math.random()*.006; furA[idx]=0; sftA[idx]=.06;
+    idx++;
+  }
+}
+
+// ── Pebbles ──
+const pebblePos = [[-.45,.15],[.38,-.25],[-.15,-.42],[.28,.35],[-.50,-.30],[.48,-.05],[-.05,.42],[.10,-.45]];
+const perPeb = Math.floor(PEBBLE_N/pebblePos.length);
+for(const [px,pz] of pebblePos){
+  for(let i=0;i<perPeb;i++){
+    const x=px+rng(-.02,.02), z=pz+rng(-.02,.02);
+    const y=-.005+Math.random()*.015;
+    const j=idx*3;
+    pos[j]=rest[j]=x; pos[j+1]=rest[j+1]=y; pos[j+2]=rest[j+2]=z;
+    const v=.5+Math.random()*.2;
+    col[j]=v; col[j+1]=v*.95; col[j+2]=v*.9;
+    szA[idx]=.006+Math.random()*.006; furA[idx]=0; sftA[idx]=.03;
+    idx++;
+  }
+}
+
+// ── Main points ──
+const geo = new THREE.BufferGeometry();
+geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+geo.setAttribute('aC', new THREE.BufferAttribute(col,3));
+geo.setAttribute('aS', new THREE.BufferAttribute(szA,1));
+geo.setAttribute('aF', new THREE.BufferAttribute(furA,1));
+geo.setAttribute('aV', new THREE.BufferAttribute(vmA,1));
+
+const mat = new THREE.ShaderMaterial({
+  vertexShader:VS, fragmentShader:FS,
+  uniforms:{ uPR:{value:R.getPixelRatio()} },
+  transparent:true, depthWrite:false, depthTest:true, blending:THREE.NormalBlending,
+});
+scene.add(new THREE.Points(geo, mat));
+
+// ── Ambient dust (additive blending, separate object) ──
+const dPos = new Float32Array(DUST_N*3);
+const dCol = new Float32Array(DUST_N*3);
+const dSz  = new Float32Array(DUST_N);
+for(let i=0;i<DUST_N;i++){
+  const j=i*3;
+  dPos[j]=rng(-1,1); dPos[j+1]=rng(.05,.9); dPos[j+2]=rng(-.8,.8);
+  // Warm golden dust
+  dCol[j]=1.; dCol[j+1]=.92; dCol[j+2]=.7;
+  dSz[i]=rng(.008,.02);
+}
+const dGeo = new THREE.BufferGeometry();
+dGeo.setAttribute('position', new THREE.BufferAttribute(dPos,3));
+dGeo.setAttribute('aC', new THREE.BufferAttribute(dCol,3));
+dGeo.setAttribute('aS', new THREE.BufferAttribute(dSz,1));
+const dMat = new THREE.ShaderMaterial({
+  vertexShader:DVS, fragmentShader:DFS,
+  uniforms:{ uT:{value:0}, uPR:{value:R.getPixelRatio()} },
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+});
+scene.add(new THREE.Points(dGeo, dMat));
+
+// ── Deformation state ──
+const prevDir = cam.position.clone().normalize();
+const angV    = new THREE.Vector3();
+const clock   = new THREE.Clock();
+
+const tail  = [ranges.tailBs, ranges.tailMd, ranges.tailTp];
+const earL  = [ranges.earL, ranges.earTipL, ranges.earInL];
+const earR  = [ranges.earR, ranges.earTipR, ranges.earInR];
+
+function inRange(i, list){ for(const r of list) if(i>=r.start&&i<r.end) return true; return false; }
+
+// ── Stats ──
+const statsEl = document.getElementById('stats');
+let fc=0, ft=0;
+
+// ── Animate ──
+function loop(){
+  requestAnimationFrame(loop);
+  const dt   = Math.min(clock.getDelta(),.05);
+  const time = clock.getElapsedTime();
+  ctrl.update();
+
+  // Camera angular velocity → PBD driving force
+  const cd = cam.position.clone().normalize();
+  const raw = new THREE.Vector3().crossVectors(prevDir, cd);
+  if(dt>1e-6) raw.multiplyScalar(1/dt);
+  angV.lerp(raw, .25);
+  prevDir.copy(cd);
+  const ax=angV.x, ay=angV.y, az=angV.z;
+
+  const br = 1 + Math.sin(time*C.breathSpd)*C.breathAmp;
+
+  const PA = geo.attributes.position.array;
+  const VA = geo.attributes.aV.array;
+
+  for(let i=0;i<sceneTotal;i++){
+    const i3=i*3, s=sftA[i];
+    if(s<.01){
+      PA[i3]=rest[i3]; PA[i3+1]=rest[i3+1]*(i<foxTotal?br:1); PA[i3+2]=rest[i3+2];
+      VA[i]=0; continue;
+    }
+
+    let tx=rest[i3], ty=rest[i3+1]*(i<foxTotal?br:1), tz=rest[i3+2];
+
+    // Tail wag
+    if(inRange(i,tail)){
+      tx += Math.sin(time*C.tailSpd)*C.tailAmp;
+      ty += Math.cos(time*C.tailSpd*.7)*.012;
+    }
+    // Ear twitch
+    if(inRange(i,earL)) ty += Math.sin(time*C.earTwitchSpd+1.)*C.earTwitchAmp;
+    if(inRange(i,earR)) ty += Math.sin(time*C.earTwitchSpd+2.5)*C.earTwitchAmp;
+
+    const dx=PA[i3]-tx, dy=PA[i3+1]-ty, dz=PA[i3+2]-tz;
+    const fx=(ay*tz-az*ty)*C.inertia*s;
+    const fy=(az*tx-ax*tz)*C.inertia*s;
+    const fz=(ax*ty-ay*tx)*C.inertia*s;
+
+    vel[i3]  +=(-C.springK*dx-C.damping*vel[i3]  +fx)*dt;
+    vel[i3+1]+=(-C.springK*dy-C.damping*vel[i3+1]+fy)*dt;
+    vel[i3+2]+=(-C.springK*dz-C.damping*vel[i3+2]+fz)*dt;
+
+    PA[i3]  +=vel[i3]  *dt;
+    PA[i3+1]+=vel[i3+1]*dt;
+    PA[i3+2]+=vel[i3+2]*dt;
+
+    VA[i]=Math.sqrt(vel[i3]*vel[i3]+vel[i3+1]*vel[i3+1]+vel[i3+2]*vel[i3+2]);
+  }
+
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.aV.needsUpdate = true;
+  dMat.uniforms.uT.value = time;
+
+  R.render(scene, cam);
+
+  fc++; ft+=dt;
+  if(ft>=1){ statsEl.textContent=`${(sceneTotal+DUST_N).toLocaleString()} splats \xb7 ${Math.round(fc/ft)} fps`; fc=0; ft=0; }
+}
+loop();
+
+addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;
+  cam.updateProjectionMatrix();
+  R.setSize(innerWidth,innerHeight);
+  mat.uniforms.uPR.value=R.getPixelRatio();
+  dMat.uniforms.uPR.value=R.getPixelRatio();
+});
+</script>
+</body>
+</html>

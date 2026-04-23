@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GS Fox — Tight Render</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:radial-gradient(ellipse at 50% 55%,#0d0a07 0%,#040302 55%,#000 100%);overflow:hidden;font-family:'SF Mono','Fira Code','Consolas',monospace}
+canvas{display:block}
+#ui{position:fixed;top:0;left:0;right:0;padding:14px;text-align:center;color:rgba(255,255,255,.8);pointer-events:none;z-index:10;text-shadow:0 1px 8px rgba(0,0,0,.95)}
+#ui h1{font-size:12px;font-weight:500;letter-spacing:.8px;opacity:.7}
+#st{position:fixed;bottom:10px;left:12px;color:rgba(255,255,255,.22);font-size:9px;pointer-events:none;z-index:10;font-family:inherit}
+#btns{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:20;flex-wrap:wrap;justify-content:center;max-width:90%}
+#btns button{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.8);font-family:inherit;font-size:11px;padding:7px 14px;border-radius:6px;cursor:pointer;transition:all .15s;backdrop-filter:blur(8px);white-space:nowrap}
+#btns button:hover{background:rgba(255,180,100,.2);border-color:rgba(255,180,100,.4)}
+#btns button.active{background:rgba(255,140,50,.3);border-color:rgba(255,140,50,.5)}
+#vig{position:fixed;inset:0;background:radial-gradient(ellipse at 50% 42%,transparent 40%,rgba(0,0,0,.65) 100%);pointer-events:none;z-index:5}
+#ld{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;z-index:100;color:rgba(255,255,255,.45);font-size:11px;font-family:inherit;transition:opacity .8s}
+#ld.ok{opacity:0;pointer-events:none}
+#ld .bar{width:200px;height:2px;background:rgba(255,255,255,.08);border-radius:1px;margin-top:10px;overflow:hidden}
+#ld .fill{height:100%;width:0%;background:rgba(255,180,100,.5);transition:width .15s}
+</style>
+</head>
+<body>
+<div id="ld"><span id="ldtxt">Generating splats...</span><div class="bar"><div class="fill" id="ldf"></div></div></div>
+<div id="ui"><h1>GAUSSIAN SPLAT DEFORMATION &mdash; RED FOX</h1></div>
+<div id="vig"></div>
+<div id="st"></div>
+<div id="btns">
+  <button onclick="playAnim('jump')">Jump</button>
+  <button onclick="playAnim('shake')">Shake</button>
+  <button onclick="playAnim('bigWag')">Wag Tail</button>
+  <button onclick="playAnim('lookAround')">Look Around</button>
+  <button onclick="playAnim('spin')">Spin</button>
+  <button onclick="playAnim('nod')">Nod</button>
+  <button onclick="playAnim('bounce')">Bounce</button>
+  <button onclick="playAnim('wiggle')">Wiggle</button>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import*as THREE from'three';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+
+/* ================================================================
+   TIGHT-RENDER GAUSSIAN SPLAT FOX  v4
+
+   130k+ splats. Fur hugs surfaces (max 0.02 offset for body).
+   Core particles are nearly opaque → solid, can't-see-through body.
+   Directional key light + fill + specular + AO + warm rim.
+   Depth-sorted for correct alpha compositing.
+   PBD spring-damper deformation on camera orbit.
+   ================================================================ */
+
+const C={
+  Q:5.5,
+  springK:14,damping:4.5,inertia:2.8,
+  breathSpd:1.1,breathAmp:.004,
+  tailSpd:2.5,tailAmp:.035,earSpd:4,earAmp:.005,
+  sortInt:5
+};
+
+const R=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+R.setSize(innerWidth,innerHeight);
+R.setPixelRatio(Math.min(devicePixelRatio,2));
+R.setClearColor(0x000000);
+document.body.appendChild(R.domElement);
+
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(36,innerWidth/innerHeight,.1,100);
+cam.position.set(.55,.68,2.0);
+
+const ctrl=new OrbitControls(cam,R.domElement);
+ctrl.target.set(0,.48,0);
+ctrl.enableDamping=true;ctrl.dampingFactor=.06;
+ctrl.rotateSpeed=.7;ctrl.minDistance=.45;ctrl.maxDistance=5;
+ctrl.autoRotate=true;ctrl.autoRotateSpeed=.35;
+ctrl.update();
+
+// ── Shaders ──────────────────────────────────────────────
+const VS=/*glsl*/`
+attribute float aS;
+attribute vec3 aC;
+attribute float aF;
+attribute float aV;
+attribute float aAO;
+attribute vec3 aN; // approx surface normal
+
+uniform float uPR;
+uniform vec3 uCamPos;
+uniform float uT;
+
+varying vec3 vC;
+varying float vA;
+varying float vF;
+
+void main(){
+  vec4 wP=modelMatrix*vec4(position,1.);
+  vec4 mv=viewMatrix*wP;
+
+  // ── Lighting ──
+  vec3 N=normalize(aN);
+  vec3 V=normalize(uCamPos-wP.xyz);
+
+  // Key light (warm, upper-right-front)
+  vec3 L1=normalize(vec3(.6,1.,.7));
+  float diff1=max(dot(N,L1),0.)*.55;
+
+  // Fill light (cool, left-low)
+  vec3 L2=normalize(vec3(-.5,.3,.4));
+  float diff2=max(dot(N,L2),0.)*.18;
+
+  // Ambient
+  float amb=.32;
+
+  // Specular (key light only)
+  vec3 H=normalize(L1+V);
+  float spec=pow(max(dot(N,H),0.),40.)*.18;
+
+  // Rim light (warm silhouette glow)
+  float rim=1.-abs(dot(V,N));
+  rim=pow(rim,3.)*.20;
+  vec3 rimC=vec3(rim*.9,rim*.45,rim*.12);
+
+  // AO
+  float ao=1.-aAO*.4;
+  ao*=.85+clamp(position.y,0.,1.)*.15;
+
+  // Combine
+  float light=(amb+diff1+diff2)*ao;
+  vC=aC*light+vec3(spec)+rimC;
+
+  // Micro fur movement (subtle wind in shader)
+  float microWind=0.;
+  if(aF>.5){
+    microWind=sin(position.x*40.+uT*.8)*cos(position.z*35.+uT*.6)*.0008*aF;
+  }
+
+  vec4 mvOff=mv;
+  mvOff.x+=microWind;
+
+  float px=aS*uPR*(340./-mvOff.z);
+  px*=1.+aV*10.;
+  gl_PointSize=clamp(px,.5,50.);
+  gl_Position=projectionMatrix*mvOff;
+
+  // Alpha: core near-fully opaque, fur solid
+  vA=mix(.98,.75,aF);
+  vF=aF;
+
+  float d=length(mvOff.xyz);
+  vA*=smoothstep(7.,1.5,d);
+}
+`;
+
+const FS=/*glsl*/`
+varying vec3 vC;
+varying float vA;
+varying float vF;
+void main(){
+  vec2 d=gl_PointCoord-.5;
+  float r2=dot(d,d);
+  // Smooth opaque center with soft edge — NOT gaussian cloud
+  float r=sqrt(r2);
+  // Core: flat opaque center, sharp edge. Fur: softer edge.
+  float edge=mix(.38,.30,vF);
+  float a=smoothstep(.5,edge,r)*vA;
+  if(a<.008)discard;
+  gl_FragColor=vec4(vC,a);
+}
+`;
+
+// Bokeh background shader
+const BVS=/*glsl*/`
+attribute float aS;attribute vec3 aC;
+uniform float uPR;uniform float uT;
+varying vec3 vC;varying float vA;
+void main(){
+  vC=aC;
+  vec3 p=position;
+  p.x+=sin(uT*.08+position.y*2.)*.05;
+  p.y+=cos(uT*.06+position.x*1.5)*.03;
+  vec4 mv=modelViewMatrix*vec4(p,1.);
+  gl_PointSize=clamp(aS*uPR*(120./-mv.z),.5,80.);
+  gl_Position=projectionMatrix*mv;
+  vA=.04+.02*sin(uT*.3+position.z*3.);
+}
+`;
+const BFS=/*glsl*/`
+varying vec3 vC;varying float vA;
+void main(){
+  vec2 d=gl_PointCoord-.5;
+  float r2=dot(d,d);
+  // Soft circle with ring
+  float a=exp(-r2*3.)*vA;
+  float ring=smoothstep(.20,.22,sqrt(r2))*smoothstep(.25,.23,sqrt(r2))*.3;
+  a+=ring*vA;
+  if(a<.005)discard;
+  gl_FragColor=vec4(vC,a);
+}
+`;
+
+// Dust
+const DVS=/*glsl*/`
+attribute float aS;attribute vec3 aC;
+uniform float uT;uniform float uPR;
+varying vec3 vC;varying float vA;
+void main(){vC=aC;vec3 p=position;
+p.y+=sin(uT*.2+position.x*5.)*.02;p.x+=cos(uT*.15+position.z*4.)*.015;
+vec4 mv=modelViewMatrix*vec4(p,1.);
+gl_PointSize=clamp(aS*uPR*(160./-mv.z),.3,24.);
+gl_Position=projectionMatrix*mv;vA=.08+.04*sin(uT+position.y*8.);}
+`;
+const DFS=/*glsl*/`
+varying vec3 vC;varying float vA;
+void main(){vec2 d=gl_PointCoord-.5;float a=exp(-dot(d,d)*4.)*vA;
+if(a<.005)discard;gl_FragColor=vec4(vC,a);}
+`;
+
+// ── Helpers ──
+const rng=(a,b)=>a+Math.random()*(b-a);
+function insideE(cx,cy,cz,rx,ry,rz){
+  // Surface shell only — no interior particles visible through alpha
+  const th=Math.random()*Math.PI*2,ph=Math.acos(Math.random()*2-1);
+  const nx=Math.sin(ph)*Math.cos(th),ny=Math.sin(ph)*Math.sin(th),nz=Math.cos(ph);
+  const depth=.88+Math.random()*.12; // thin 12% shell near surface
+  return[cx+nx*rx*depth,cy+ny*ry*depth,cz+nz*rz*depth];
+}
+function surfTight(cx,cy,cz,rx,ry,rz,maxF){
+  const th=Math.random()*Math.PI*2,ph=Math.acos(Math.random()*2-1);
+  const nx=Math.sin(ph)*Math.cos(th),ny=Math.sin(ph)*Math.sin(th),nz=Math.cos(ph);
+  const f=Math.random()*maxF;
+  return{p:[cx+nx*(rx+f),cy+ny*(ry+f),cz+nz*(rz+f)],n:[nx,ny,nz]};
+}
+function jit(r,g,b,fur){
+  const v=fur?(.92+Math.random()*.16):(.88+Math.random()*.22);
+  const w=(Math.random()-.5)*.04;
+  let cr=Math.min(1,Math.max(0,r*v+w));
+  let cg=Math.min(1,Math.max(0,g*v));
+  let cb=Math.min(1,Math.max(0,b*v-w*.3));
+  if(fur&&Math.random()<.06){cr*=.52;cg*=.48;cb*=.42}
+  else if(fur&&Math.random()<.04){cr=Math.min(1,cr*1.25);cg=Math.min(1,cg*1.2);cb=Math.min(1,cb*1.15)}
+  return[cr,cg,cb];
+}
+
+// ── Fox body parts ──
+// [name, cx,cy,cz, rx,ry,rz, cnt, r,g,b, fur, fRatio, fMaxLen]
+const Q=C.Q;
+const P=[
+  // TORSO — slender, elongated (fox, not hamster)
+  ['body',    0,.52,0,      .14,.16,.30, 4000, .93,.55,.14, .88,.18,.015],
+  ['bodyLo',  0,.38,.02,    .13,.12,.22, 1800, .91,.52,.12, .82,.15,.012],
+  ['upBack',  0,.60,-.05,   .12,.10,.18, 1200, .90,.50,.12, .85,.16,.013],
+  ['loBack',  0,.46,-.18,   .12,.10,.14, 900,  .89,.48,.11, .80,.14,.012],
+  ['haunch',  0,.42,-.14,   .13,.12,.13, 800,  .90,.50,.12, .78,.14,.012],
+  // CHEST/BELLY/RUFF (cream) — flush with body, not protruding
+  ['chest',   0,.52,.14,    .10,.10,.08, 1400, .97,.94,.89, .90,.22,.018],
+  ['chestUp', 0,.60,.12,    .08,.06,.06, 600,  .97,.95,.90, .88,.20,.016],
+  ['belly',   0,.38,.08,    .11,.08,.16, 800,  .96,.93,.87, .82,.18,.014],
+  ['ruff',    0,.65,.10,    .09,.06,.07, 1200, .98,.96,.91, .94,.28,.022],
+  ['ruffS',   0,.62,.04,    .10,.05,.06, 500,  .97,.95,.90, .92,.25,.020],
+  // HEAD — smaller, more triangular
+  ['head',    0,.78,.20,    .11,.11,.12, 2800, .94,.57,.15, .78,.15,.012],
+  ['headTp',  0,.86,.18,    .08,.06,.09, 800,  .93,.56,.14, .72,.13,.010],
+  ['cheekL', -.07,.74,.28,  .04,.04,.03, 400,  .97,.94,.88, .65,.12,.008],
+  ['cheekR',  .07,.74,.28,  .04,.04,.03, 400,  .97,.94,.88, .65,.12,.008],
+  ['chin',    0,.69,.32,    .03,.025,.03, 350, .96,.93,.88, .55,.10,.006],
+  ['jawL',   -.06,.72,.24,  .03,.04,.03, 300,  .94,.57,.15, .62,.12,.008],
+  ['jawR',    .06,.72,.24,  .03,.04,.03, 300,  .94,.57,.15, .62,.12,.008],
+  ['brow',    0,.84,.22,    .08,.03,.07, 500,  .92,.55,.14, .60,.10,.008],
+  ['neckL',  -.07,.67,.10,  .04,.06,.05, 500,  .93,.55,.14, .75,.14,.012],
+  ['neckR',   .07,.67,.10,  .04,.06,.05, 500,  .93,.55,.14, .75,.14,.012],
+  // SNOUT — longer, more pointed
+  ['snout',   0,.72,.38,    .04,.035,.11, 600, .96,.93,.88, .35,.08,.005],
+  ['snTop',   0,.75,.40,    .03,.02,.08, 300,  .93,.56,.15, .25,.06,.004],
+  ['snBr',    0,.77,.32,    .02,.015,.06, 250, .93,.56,.15, .20,.05,.003],
+  ['nose',    0,.72,.48,    .020,.015,.014,150,.05,.03,.02, 0,0,0],
+  ['mouth',   0,.70,.44,    .016,.003,.012,60, .12,.08,.06, 0,0,0],
+  // EYES
+  ['eyeL',   -.045,.80,.32, .018,.016,.013,120,.06,.04,.02, 0,0,0],
+  ['eyeR',    .045,.80,.32, .018,.016,.013,120,.06,.04,.02, 0,0,0],
+  ['irisL',  -.045,.80,.33, .013,.013,.007,90, .82,.56,.10, 0,0,0],
+  ['irisR',   .045,.80,.33, .013,.013,.007,90, .82,.56,.10, 0,0,0],
+  ['pupL',   -.045,.80,.335,.007,.009,.004,50, .03,.02,.01, 0,0,0],
+  ['pupR',    .045,.80,.335,.007,.009,.004,50, .03,.02,.01, 0,0,0],
+  ['specL',  -.040,.805,.34,.004,.004,.003,25, .99,.99,.97, 0,0,0],
+  ['specR',   .040,.805,.34,.004,.004,.003,25, .99,.99,.97, 0,0,0],
+  ['lashL',  -.045,.812,.33,.018,.003,.007,35, .10,.07,.04, 0,0,0],
+  ['lashR',   .045,.812,.33,.018,.003,.007,35, .10,.07,.04, 0,0,0],
+  ['browL',  -.050,.83,.30, .018,.007,.012,120,.91,.53,.13, .25,.06,.004],
+  ['browR',   .050,.83,.30, .018,.007,.012,120,.91,.53,.13, .25,.06,.004],
+  // EARS — tall, pointed
+  ['earL',   -.08,.96,.16,  .028,.09,.022, 700,.92,.55,.14, .85,.20,.018],
+  ['earR',    .08,.96,.16,  .028,.09,.022, 700,.92,.55,.14, .85,.20,.018],
+  ['earTL',  -.08,1.03,.15, .016,.028,.014,220,.12,.09,.07, .55,.12,.008],
+  ['earTR',   .08,1.03,.15, .016,.028,.014,220,.12,.09,.07, .55,.12,.008],
+  ['earIL',  -.07,.95,.18,  .018,.05,.010, 280,.96,.78,.72, .20,.05,.003],
+  ['earIR',   .07,.95,.18,  .018,.05,.010, 280,.96,.78,.72, .20,.05,.003],
+  ['earBL',  -.085,.95,.12, .025,.07,.010, 220,.90,.52,.13, .78,.16,.014],
+  ['earBR',   .085,.95,.12, .025,.07,.010, 220,.90,.52,.13, .78,.16,.014],
+  // FRONT LEGS — single continuous taper, no separate joints
+  ['fLegL',  -.08,.26,.18,  .032,.26,.032, 900,.91,.53,.13, .60,.12,.008],
+  ['fLegR',   .08,.26,.18,  .032,.26,.032, 900,.91,.53,.13, .60,.12,.008],
+  // Dark lower portion (overlaps leg, not a separate blob)
+  ['fSockL', -.08,.08,.18,  .028,.08,.028, 400,.10,.08,.05, .45,.10,.006],
+  ['fSockR',  .08,.08,.18,  .028,.08,.028, 400,.10,.08,.05, .45,.10,.006],
+  // BACK LEGS — single continuous shape, sitting
+  ['bLegL',  -.11,.22,-.08, .042,.20,.065,900,.89,.51,.12, .68,.14,.010],
+  ['bLegR',   .11,.22,-.08, .042,.20,.065,900,.89,.51,.12, .68,.14,.010],
+  ['bSockL', -.11,.07,.00,  .032,.07,.038,300,.10,.08,.05, .45,.10,.006],
+  ['bSockR',  .11,.07,.00,  .032,.07,.038,300,.10,.08,.05, .45,.10,.006],
+  // SHOULDERS/HIPS — tiny gap-fillers, NOT separate bumps
+  ['shdL',   -.10,.48,.08,  .03,.04,.06, 250,.92,.54,.14, .74,.14,.012],
+  ['shdR',    .10,.48,.08,  .03,.04,.06, 250,.92,.54,.14, .74,.14,.012],
+  ['hipL',   -.10,.40,-.10, .03,.04,.06, 250,.90,.52,.13, .70,.14,.010],
+  ['hipR',    .10,.40,-.10, .03,.04,.06, 250,.90,.52,.13, .70,.14,.010],
+  // BLEND shapes — smooth body-to-leg transitions
+  ['blFLL',  -.08,.42,.14,  .04,.06,.06, 300,.92,.53,.13, .75,.14,.012],
+  ['blFLR',   .08,.42,.14,  .04,.06,.06, 300,.92,.53,.13, .75,.14,.012],
+  ['blBLL',  -.10,.36,-.06, .04,.06,.06, 300,.90,.51,.12, .72,.14,.010],
+  ['blBLR',   .10,.36,-.06, .04,.06,.06, 300,.90,.51,.12, .72,.14,.010],
+  // Body-to-neck blend
+  ['blNeck', 0,.66,.08,     .10,.06,.08, 400,.93,.55,.14, .80,.15,.013],
+  // TAIL — bushy, curling right
+  ['tailTr',  .02,.48,-.28, .04,.04,.06,  500,.92,.54,.14, .92,.35,.035],
+  ['tailBs',  .06,.44,-.35, .055,.055,.09,900,.94,.57,.15, .96,.42,.045],
+  ['tailM1',  .13,.40,-.44, .07,.07,.09, 1100,.93,.56,.14,.97,.48,.050],
+  ['tailM2',  .20,.37,-.50, .065,.065,.07,900,.94,.58,.16, .97,.50,.052],
+  ['tailTp',  .26,.35,-.54, .055,.055,.055,800,.98,.96,.92, .98,.52,.055],
+  // WHISKERS — longer
+  ['whkL1',  -.08,.72,.42,  .10,.003,.003,22,.98,.97,.96, 0,0,0],
+  ['whkL2',  -.07,.715,.43, .11,.003,.003,22,.97,.96,.95, 0,0,0],
+  ['whkR1',   .08,.72,.42,  .10,.003,.003,22,.98,.97,.96, 0,0,0],
+  ['whkR2',   .07,.715,.43, .11,.003,.003,22,.97,.96,.95, 0,0,0],
+];
+
+// Environment counts
+const GND_N=10000,GRASS_N=2000,SHRM_N=700,LEAF_N=600,PEB_N=400,FLR_N=250,SHAD_N=3000,DUST_N=350,BOKEH_N=40;
+
+// ── Count & allocate ──
+let foxN=0;for(const p of P)foxN+=Math.round(p[7]*Q);
+const envN=GND_N+GRASS_N+SHRM_N+LEAF_N+PEB_N+FLR_N+SHAD_N;
+const scnN=foxN+envN;
+
+const pos=new Float32Array(scnN*3);
+const rst=new Float32Array(scnN*3);
+const vel=new Float32Array(scnN*3);
+const col=new Float32Array(scnN*3);
+const szA=new Float32Array(scnN);
+const furA=new Float32Array(scnN);
+const sftA=new Float32Array(scnN);
+const vmA=new Float32Array(scnN);
+const aoA=new Float32Array(scnN);
+const nrmA=new Float32Array(scnN*3); // approximate normals
+
+const ranges={};
+let idx=0;
+const ldEl=document.getElementById('ldf');
+const ldTxt=document.getElementById('ldtxt');
+
+// ── Generate fox ──
+let partsDone=0;
+for(const p of P){
+  const[nm,cx,cy,cz,rx,ry,rz,baseCnt,cr,cg,cb,fw,fr,fl]=p;
+  const cnt=Math.round(baseCnt*Q);
+  const start=idx;
+  const nFur=Math.floor(cnt*fr),nCore=cnt-nFur;
+
+  for(let i=0;i<nCore;i++){
+    const[x,y,z]=insideE(cx,cy,cz,rx,ry,rz);
+    const j=idx*3;
+    pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;
+    const[r,g,b]=jit(cr,cg,cb,false);
+    col[j]=r;col[j+1]=g;col[j+2]=b;
+    // Approximate normal (direction from ellipsoid center)
+    const nx=(x-cx)/rx,ny=(y-cy)/ry,nz=(z-cz)/rz;
+    const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+    nrmA[j]=nx/nl;nrmA[j+1]=ny/nl;nrmA[j+2]=nz/nl;
+    szA[idx]=.018+Math.random()*.012;
+    furA[idx]=0;sftA[idx]=fw*.22;
+    const dS=1-Math.sqrt(((x-cx)/rx)**2+((y-cy)/ry)**2+((z-cz)/rz)**2);
+    aoA[idx]=Math.max(0,dS*.5);
+    idx++;
+  }
+  for(let i=0;i<nFur;i++){
+    const{p:pt,n:nn}=surfTight(cx,cy,cz,rx,ry,rz,fl*.45);
+    const j=idx*3;
+    pos[j]=rst[j]=pt[0];pos[j+1]=rst[j+1]=pt[1];pos[j+2]=rst[j+2]=pt[2];
+    const[r,g,b]=jit(cr,cg,cb,true);
+    col[j]=r;col[j+1]=g;col[j+2]=b;
+    nrmA[j]=nn[0];nrmA[j+1]=nn[1];nrmA[j+2]=nn[2];
+    szA[idx]=.020+Math.random()*.014;
+    furA[idx]=1;sftA[idx]=fw*.8;aoA[idx]=0;
+    idx++;
+  }
+  ranges[nm]={start,end:idx};
+  partsDone++;
+  ldEl.style.width=Math.round(partsDone/P.length*70)+'%';
+}
+
+const foxEnd=idx;
+
+// ── Paper-inspired: rigid body + root-dragging deformation ──
+// Per arXiv:2604.14782v1, only hair/fur deforms. Body is rigid.
+// Deformable zones use distance-from-pivot weighting (root-dragging):
+// roots (near body) barely move, tips swing freely.
+
+const rigid=['body','bodyLo','upBack','loBack','haunch',
+  'chest','chestUp','belly',
+  'head','headTp','cheekL','cheekR','chin','jawL','jawR','brow','neckL','neckR',
+  'snout','snTop','snBr','nose','mouth',
+  'eyeL','eyeR','irisL','irisR','pupL','pupR','specL','specR','lashL','lashR','browL','browR',
+  'fLegL','fLegR','fSockL','fSockR',
+  'bLegL','bLegR','bSockL','bSockR',
+  'shdL','shdR','hipL','hipR',
+  'blFLL','blFLR','blBLL','blBLR','blNeck'];
+for(const n of rigid){const r=ranges[n];if(r)for(let i=r.start;i<r.end;i++)sftA[i]=0;}
+
+// Root-dragging: scale softness by distance from zone pivot
+const pivots={
+  tail:[.02,.48,-.28],   // where tail attaches to body
+  earL:[-.08,.90,.16],   // ear base
+  earR:[.08,.90,.16],
+  ruff:[0,.64,.12],      // neck
+};
+const zoneMap={
+  tailTr:'tail',tailBs:'tail',tailM1:'tail',tailM2:'tail',tailTp:'tail',
+  earL:'earL',earTL:'earL',earIL:'earL',earBL:'earL',
+  earR:'earR',earTR:'earR',earIR:'earR',earBR:'earR',
+  ruff:'ruff',ruffS:'ruff',
+};
+for(const[partName,zoneName]of Object.entries(zoneMap)){
+  const r=ranges[partName]; if(!r)continue;
+  const pv=pivots[zoneName];
+  for(let i=r.start;i<r.end;i++){
+    const i3=i*3;
+    const dx=rst[i3]-pv[0],dy=rst[i3+1]-pv[1],dz=rst[i3+2]-pv[2];
+    const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
+    // Root-dragging: softness scales with distance from pivot
+    sftA[i]*=Math.min(dist*4.,1.);
+  }
+}
+
+ldTxt.textContent='Building environment...';
+
+// ── Ground shadow (dark circle under fox) ──
+for(let i=0;i<SHAD_N;i++){
+  const a=Math.random()*Math.PI*2,r=Math.random()*.45;
+  const x=Math.cos(a)*r,z=Math.sin(a)*r*.8,y=-.024;
+  const j=idx*3;
+  pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;
+  const fade=1-r/.45;
+  col[j]=col[j+1]=col[j+2]=0;
+  nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;
+  szA[idx]=.016+Math.random()*.014;furA[idx]=0;sftA[idx]=0;
+  aoA[idx]=.4*fade;
+  idx++;
+}
+
+// ── Ground (moss) — larger area, bigger particles, brighter ──
+for(let i=0;i<GND_N;i++){
+  const x=rng(-1.0,1.0),z=rng(-.85,.85);
+  const d=Math.sqrt(x*x+z*z);
+  if(d>.95&&Math.random()<(d-.95)/.15){pos[idx*3]=rst[idx*3]=99;idx++;continue}
+  const y=-.022+Math.random()*.008;
+  const j=idx*3;
+  pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;
+  nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;
+  const t=Math.random();
+  if(t<.2){const v=.9+Math.random()*.2;col[j]=.40*v;col[j+1]=.32*v;col[j+2]=.22*v}
+  else if(t<.5){const v=.8+Math.random()*.3;col[j]=.18*v;col[j+1]=.38*v;col[j+2]=.12*v}
+  else if(t<.8){const v=.8+Math.random()*.3;col[j]=.24*v;col[j+1]=.42*v;col[j+2]=.15*v}
+  else{const v=.85+Math.random()*.25;col[j]=.32*v;col[j+1]=.44*v;col[j+2]=.14*v}
+  szA[idx]=.014+Math.random()*.012;furA[idx]=0;sftA[idx]=0;aoA[idx]=.15;idx++;
+}
+
+// ── Grass tufts — taller, brighter, more visible ──
+for(let i=0;i<GRASS_N;i++){
+  const bx=rng(-.85,.85),bz=rng(-.7,.7);
+  if(Math.sqrt(bx*bx+bz*bz)>.85){pos[idx*3]=rst[idx*3]=99;idx++;continue}
+  const h=rng(.005,.05),x=bx+rng(-.005,.005),z=bz+rng(-.005,.005);
+  const j=idx*3;
+  pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=h;pos[j+2]=rst[j+2]=z;
+  nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;
+  const v=.75+Math.random()*.35;
+  col[j]=.20*v;col[j+1]=(.40+Math.random()*.12)*v;col[j+2]=.10*v;
+  szA[idx]=.008+Math.random()*.008;furA[idx]=0;sftA[idx]=.04;aoA[idx]=0;idx++;
+}
+
+// ── Mushrooms — bigger ──
+const shrooms=[{x:-.45,z:.30,h:.08,c:.045},{x:.38,z:-.22,h:.07,c:.040},{x:-.28,z:-.40,h:.06,c:.035},{x:.48,z:.14,h:.065,c:.038},{x:-.55,z:.06,h:.055,c:.032},{x:.24,z:.42,h:.072,c:.042}];
+const pSh=Math.floor(SHRM_N/shrooms.length);
+for(const s of shrooms){
+  const sN=Math.floor(pSh*.3),cN=pSh-sN;
+  for(let i=0;i<sN;i++){const x=s.x+rng(-.008,.008),z=s.z+rng(-.008,.008),y=rng(.002,s.h);const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=0;nrmA[j+1]=0;nrmA[j+2]=1;const v=.92+Math.random()*.08;col[j]=.95*v;col[j+1]=.92*v;col[j+2]=.86*v;szA[idx]=.008+Math.random()*.006;furA[idx]=0;sftA[idx]=0;aoA[idx]=.1;idx++}
+  for(let i=0;i<cN;i++){const th=Math.random()*Math.PI*2,ph=Math.random()*Math.PI*.5;const x=s.x+Math.sin(ph)*Math.cos(th)*s.c,z=s.z+Math.sin(ph)*Math.sin(th)*s.c,y=s.h+Math.cos(ph)*s.c*.55;const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=Math.sin(ph)*Math.cos(th);nrmA[j+1]=Math.cos(ph);nrmA[j+2]=Math.sin(ph)*Math.sin(th);const sp=Math.random()<.18;if(sp){col[j]=.97;col[j+1]=.95;col[j+2]=.92}else{const v=.92+Math.random()*.08;col[j]=.90*v;col[j+1]=.18*v;col[j+2]=.10*v}szA[idx]=.008+Math.random()*.006;furA[idx]=0;sftA[idx]=0;aoA[idx]=.05;idx++}
+}
+
+// ── Leaves — bigger, brighter ──
+const lvs=[{x:-.35,z:.08,c:[.90,.50,.15]},{x:.20,z:.35,c:[.88,.35,.12]},{x:.40,z:-.35,c:[.92,.68,.18]},{x:-.14,z:-.45,c:[.85,.40,.10]},{x:.30,z:.20,c:[.90,.58,.12]},{x:-.45,z:-.20,c:[.83,.30,.10]},{x:.08,z:.50,c:[.88,.45,.12]},{x:-.38,z:.40,c:[.86,.55,.16]}];
+const pLf=Math.floor(LEAF_N/lvs.length);
+for(const l of lvs){for(let i=0;i<pLf;i++){const a=Math.random()*Math.PI*2,r=Math.random()*.05;const x=l.x+Math.cos(a)*r*2,z=l.z+Math.sin(a)*r,y=-.003+Math.random()*.004;const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;const v=.88+Math.random()*.18;col[j]=l.c[0]*v;col[j+1]=l.c[1]*v;col[j+2]=l.c[2]*v;szA[idx]=.010+Math.random()*.008;furA[idx]=0;sftA[idx]=0;aoA[idx]=.06;idx++}}
+
+// ── Pebbles — bigger ──
+const pbs=[[-.52,.18],[.44,-.30],[-.18,-.48],[.34,.40],[-.56,-.35],[.54,-.08],[-.08,.48],[.14,-.52],[.46,.32],[-.42,-.12]];
+const pPb=Math.floor(PEB_N/pbs.length);
+for(const[px,pz]of pbs){for(let i=0;i<pPb;i++){const x=px+rng(-.02,.02),z=pz+rng(-.02,.02),y=-.003+Math.random()*.014;const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;const v=.48+Math.random()*.25;col[j]=v;col[j+1]=v*.96;col[j+2]=v*.92;szA[idx]=.008+Math.random()*.007;furA[idx]=0;sftA[idx]=0;aoA[idx]=.12;idx++}}
+
+// ── Small flowers ──
+const fls=[{x:-.48,z:.35,c:[.95,.88,.30]},{x:.40,z:.30,c:[.90,.70,.92]},{x:-.30,z:-.45,c:[.95,.90,.40]},{x:.50,z:-.10,c:[.85,.75,.94]},{x:.08,z:.50,c:[.95,.85,.35]}];
+const pFl=Math.floor(FLR_N/fls.length);
+for(const f of fls){
+  for(let i=0;i<Math.floor(pFl*.3);i++){const x=f.x+rng(-.003,.003),z=f.z+rng(-.003,.003),y=rng(.004,.032);const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;col[j]=.18;col[j+1]=.36;col[j+2]=.10;szA[idx]=.003;furA[idx]=0;sftA[idx]=.03;aoA[idx]=0;idx++}
+  for(let i=0;i<Math.floor(pFl*.7);i++){const a=Math.random()*Math.PI*2,r=rng(.004,.013);const x=f.x+Math.cos(a)*r,z=f.z+Math.sin(a)*r,y=.032+rng(-.002,.004);const j=idx*3;pos[j]=rst[j]=x;pos[j+1]=rst[j+1]=y;pos[j+2]=rst[j+2]=z;nrmA[j]=0;nrmA[j+1]=1;nrmA[j+2]=0;const v=.88+Math.random()*.14;col[j]=f.c[0]*v;col[j+1]=f.c[1]*v;col[j+2]=f.c[2]*v;szA[idx]=.004+Math.random()*.003;furA[idx]=0;sftA[idx]=.03;aoA[idx]=0;idx++}
+}
+
+const actual=idx;
+ldEl.style.width='85%';
+ldTxt.textContent=actual.toLocaleString()+' splats generated — building scene...';
+
+// ── Geometry ──
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.BufferAttribute(pos.slice(0,actual*3),3));
+geo.setAttribute('aC',new THREE.BufferAttribute(col.slice(0,actual*3),3));
+geo.setAttribute('aS',new THREE.BufferAttribute(szA.slice(0,actual),1));
+geo.setAttribute('aF',new THREE.BufferAttribute(furA.slice(0,actual),1));
+geo.setAttribute('aV',new THREE.BufferAttribute(vmA.slice(0,actual),1));
+geo.setAttribute('aAO',new THREE.BufferAttribute(aoA.slice(0,actual),1));
+geo.setAttribute('aN',new THREE.BufferAttribute(nrmA.slice(0,actual*3),3));
+
+const sortIdx=new Uint32Array(actual);
+for(let i=0;i<actual;i++)sortIdx[i]=i;
+geo.setIndex(new THREE.BufferAttribute(sortIdx,1));
+
+const mat=new THREE.ShaderMaterial({
+  vertexShader:VS,fragmentShader:FS,
+  uniforms:{uPR:{value:R.getPixelRatio()},uCamPos:{value:cam.position.clone()},uT:{value:0}},
+  transparent:true,depthWrite:false,depthTest:true,blending:THREE.NormalBlending
+});
+const pts=new THREE.Points(geo,mat);
+scene.add(pts);
+
+// ── Bokeh background ──
+const bP=new Float32Array(BOKEH_N*3),bC=new Float32Array(BOKEH_N*3),bS=new Float32Array(BOKEH_N);
+for(let i=0;i<BOKEH_N;i++){
+  const j=i*3;
+  bP[j]=rng(-3,3);bP[j+1]=rng(-.3,2);bP[j+2]=rng(-5,-1.5);
+  const warm=Math.random()>.5;
+  bC[j]=warm?rng(.35,.55):rng(.15,.25);
+  bC[j+1]=rng(.18,.35);
+  bC[j+2]=warm?rng(.15,.25):rng(.35,.55);
+  bS[i]=rng(.08,.35);
+}
+const bGeo=new THREE.BufferGeometry();
+bGeo.setAttribute('position',new THREE.BufferAttribute(bP,3));
+bGeo.setAttribute('aC',new THREE.BufferAttribute(bC,3));
+bGeo.setAttribute('aS',new THREE.BufferAttribute(bS,1));
+const bMat=new THREE.ShaderMaterial({
+  vertexShader:BVS,fragmentShader:BFS,
+  uniforms:{uPR:{value:R.getPixelRatio()},uT:{value:0}},
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(bGeo,bMat));
+
+// ── Dust ──
+const dP=new Float32Array(DUST_N*3),dC=new Float32Array(DUST_N*3),dSz=new Float32Array(DUST_N);
+for(let i=0;i<DUST_N;i++){const j=i*3;dP[j]=rng(-1,1);dP[j+1]=rng(.02,.85);dP[j+2]=rng(-.8,.8);dC[j]=.95;dC[j+1]=.88;dC[j+2]=.68;dSz[i]=rng(.005,.014)}
+const dGeo=new THREE.BufferGeometry();
+dGeo.setAttribute('position',new THREE.BufferAttribute(dP,3));
+dGeo.setAttribute('aC',new THREE.BufferAttribute(dC,3));
+dGeo.setAttribute('aS',new THREE.BufferAttribute(dSz,1));
+const dMat=new THREE.ShaderMaterial({
+  vertexShader:DVS,fragmentShader:DFS,
+  uniforms:{uT:{value:0},uPR:{value:R.getPixelRatio()}},
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(dGeo,dMat));
+
+// ── Depth sort ──
+const depths=new Float32Array(actual);
+let sortF=0;
+function depthSort(){
+  const PA=geo.attributes.position.array;
+  const e=cam.matrixWorldInverse.elements;
+  for(let i=0;i<actual;i++){const i3=i*3;depths[i]=e[2]*PA[i3]+e[6]*PA[i3+1]+e[10]*PA[i3+2]+e[14]}
+  sortIdx.sort((a,b)=>depths[a]-depths[b]);
+  geo.index.needsUpdate=true;
+}
+
+// ── PBD state ──
+const prevDir=cam.position.clone().normalize();
+const angV=new THREE.Vector3();
+const clock=new THREE.Clock();
+
+const tailK=['tailTr','tailBs','tailM1','tailM2','tailTp'];
+const earLK=['earL','earTL','earIL','earBL'];
+const earRK=['earR','earTR','earIR','earBR'];
+const tailRg=tailK.map(k=>ranges[k]).filter(Boolean);
+const earLRg=earLK.map(k=>ranges[k]).filter(Boolean);
+const earRRg=earRK.map(k=>ranges[k]).filter(Boolean);
+function inR(i,list){for(const r of list)if(i>=r.start&&i<r.end)return true;return false}
+
+const stEl=document.getElementById('st');
+let fc=0,ft=0;
+
+// ── Animation System ──
+// Animated rest positions — animations modify these, PBD uses them as targets
+const aRst=new Float32Array(rst.length); // animated rest positions
+
+// Collect body part groups for animation targeting
+const headParts=['head','headTp','cheekL','cheekR','chin','jawL','jawR','brow',
+  'snout','snTop','snBr','nose','mouth',
+  'eyeL','eyeR','irisL','irisR','pupL','pupR','specL','specR','lashL','lashR','browL','browR',
+  'whkL1','whkL2','whkR1','whkR2'];
+const headRgs=headParts.map(k=>ranges[k]).filter(Boolean);
+function inAny(i,list){for(const r of list)if(i>=r.start&&i<r.end)return true;return false}
+
+// Model center for rotations
+const MC={x:0,y:.48,z:.05};
+
+// Active animation state
+let curAnim=null, animT=0, animDur=0;
+
+const ANIMS={
+  jump:     {dur:1.2},
+  shake:    {dur:1.8},
+  bigWag:   {dur:2.5},
+  lookAround:{dur:3.0},
+  spin:     {dur:2.0},
+  nod:      {dur:1.5},
+  bounce:   {dur:2.0},
+  wiggle:   {dur:2.0},
+};
+
+window.playAnim=function(name){
+  if(curAnim===name){curAnim=null;return}
+  curAnim=name;
+  animT=0;
+  animDur=ANIMS[name].dur;
+  // Highlight button
+  document.querySelectorAll('#btns button').forEach(b=>b.classList.remove('active'));
+  event.target.classList.add('active');
+};
+
+// Rotation helpers
+function rotY(px,pz,cx,cz,a){
+  const dx=px-cx,dz=pz-cz,c=Math.cos(a),s=Math.sin(a);
+  return[cx+dx*c-dz*s,cz+dx*s+dz*c];
+}
+function rotZ(px,py,cx,cy,a){
+  const dx=px-cx,dy=py-cy,c=Math.cos(a),s=Math.sin(a);
+  return[cx+dx*c-dy*s,cy+dx*s+dy*c];
+}
+
+// Apply animation transforms to aRst
+function applyAnim(time,dt){
+  // Start from base rest positions
+  aRst.set(rst);
+
+  if(!curAnim){return}
+  animT+=dt;
+  const t=animT;
+  // Auto-stop one-shot anims
+  if(t>animDur&&curAnim!=='bigWag'){
+    curAnim=null;
+    document.querySelectorAll('#btns button').forEach(b=>b.classList.remove('active'));
+    return;
+  }
+  const p=Math.min(t/animDur,1); // 0→1 progress
+
+  for(let i=0;i<foxEnd;i++){
+    const i3=i*3;
+    let x=aRst[i3],y=aRst[i3+1],z=aRst[i3+2];
+
+    if(curAnim==='jump'){
+      // Smooth arc: squash→launch→peak→land→squash
+      const jumpH=.35;
+      const arc=Math.sin(p*Math.PI)*jumpH;
+      const squash=1-Math.sin(p*Math.PI*2)*.06;
+      y=y*squash+arc;
+    }
+    else if(curAnim==='shake'){
+      // Rapid side-to-side, head moves most
+      const freq=25, amp=inAny(i,headRgs)?.04:.015;
+      const decay=1-p;
+      x+=Math.sin(t*freq)*amp*decay;
+    }
+    else if(curAnim==='bigWag'){
+      // Big tail wag (loops until clicked again)
+      if(inR(i,tailRg)){
+        const dist=Math.sqrt((x-MC.x)**2+(z-MC.z)**2);
+        const wagAmp=.12*Math.min(dist*3,1);
+        x+=Math.sin(t*8)*wagAmp;
+        y+=Math.cos(t*6)*.02*Math.min(dist*3,1);
+      }
+      // Butt wiggles too
+      if(y<.5&&y>.3&&Math.abs(z+.1)<.2){
+        x+=Math.sin(t*8)*.015;
+      }
+    }
+    else if(curAnim==='lookAround'){
+      // Head turns left, pauses, turns right, pauses, centers
+      if(inAny(i,headRgs)||inR(i,earLRg)||inR(i,earRRg)){
+        let angle=0;
+        if(p<.25) angle=Math.sin(p*4*Math.PI*.5)*.4;
+        else if(p<.5) angle=.4;
+        else if(p<.75) angle=.4-Math.sin((p-.5)*4*Math.PI*.5)*.8;
+        else angle=-.4+Math.sin((p-.75)*4*Math.PI*.5)*.4;
+        const headC={x:0,z:.20};
+        const[nx,nz]=rotY(x,z,headC.x,headC.z,angle);
+        x=nx;z=nz;
+      }
+    }
+    else if(curAnim==='spin'){
+      // Full 360 rotation around Y
+      const angle=p*Math.PI*2;
+      const ease=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2; // ease in-out
+      const a=ease*Math.PI*2;
+      const[nx,nz]=rotY(x,z,MC.x,MC.z,a);
+      x=nx;z=nz;
+    }
+    else if(curAnim==='nod'){
+      // Head bobs up and down
+      if(inAny(i,headRgs)||inR(i,earLRg)||inR(i,earRRg)){
+        const headC={x:0,y:.78};
+        const nods=3;
+        const angle=Math.sin(p*nods*Math.PI*2)*.12;
+        const[nx,ny]=rotZ(x,y,headC.x,headC.y,angle);
+        x=nx;y=ny;
+      }
+    }
+    else if(curAnim==='bounce'){
+      // Bouncy hop in place (multiple small hops)
+      const hops=4;
+      const hop=Math.abs(Math.sin(p*hops*Math.PI))*.12;
+      const squash=1-Math.abs(Math.cos(p*hops*Math.PI))*.04;
+      y=y*squash+hop*(1-p); // fade out
+    }
+    else if(curAnim==='wiggle'){
+      // Full body wiggles side to side
+      const freq=6;
+      const amp=.03*(1-p);
+      const phase=(y-MC.y)*8; // wave travels up body
+      x+=Math.sin(t*freq+phase)*amp;
+    }
+
+    aRst[i3]=x; aRst[i3+1]=y; aRst[i3+2]=z;
+  }
+}
+
+ldEl.style.width='100%';
+setTimeout(()=>document.getElementById('ld').classList.add('ok'),200);
+
+// ── Main loop ──
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),.05);
+  const time=clock.getElapsedTime();
+  ctrl.update();
+
+  const cd=cam.position.clone().normalize();
+  const raw=new THREE.Vector3().crossVectors(prevDir,cd);
+  if(dt>1e-6)raw.multiplyScalar(1/dt);
+  angV.lerp(raw,.2);
+  prevDir.copy(cd);
+  const ax=angV.x,ay=angV.y,az=angV.z;
+
+  mat.uniforms.uCamPos.value.copy(cam.position);
+  mat.uniforms.uT.value=time;
+
+  // Apply animations to rest positions
+  applyAnim(time,dt);
+
+  const br=1+Math.sin(time*C.breathSpd)*C.breathAmp;
+  const PA=geo.attributes.position.array;
+  const VA=geo.attributes.aV.array;
+
+  for(let i=0;i<foxEnd;i++){
+    const i3=i*3,s=sftA[i];
+    if(s<.01){PA[i3]=aRst[i3];PA[i3+1]=aRst[i3+1]*br;PA[i3+2]=aRst[i3+2];VA[i]=0;continue}
+    let tx=aRst[i3],ty=aRst[i3+1]*br,tz=aRst[i3+2];
+    if(inR(i,tailRg)&&curAnim!=='bigWag'){tx+=Math.sin(time*C.tailSpd)*C.tailAmp;ty+=Math.cos(time*C.tailSpd*.7)*.008}
+    if(inR(i,earLRg))ty+=Math.sin(time*C.earSpd+1.)*C.earAmp;
+    if(inR(i,earRRg))ty+=Math.sin(time*C.earSpd+2.8)*C.earAmp;
+
+    const dx=PA[i3]-tx,dy=PA[i3+1]-ty,dz=PA[i3+2]-tz;
+    const fx=(ay*tz-az*ty)*C.inertia*s;
+    const fy=(az*tx-ax*tz)*C.inertia*s;
+    const fz=(ax*ty-ay*tx)*C.inertia*s;
+
+    vel[i3]+=(-C.springK*dx-C.damping*vel[i3]+fx)*dt;
+    vel[i3+1]+=(-C.springK*dy-C.damping*vel[i3+1]+fy)*dt;
+    vel[i3+2]+=(-C.springK*dz-C.damping*vel[i3+2]+fz)*dt;
+
+    PA[i3]+=vel[i3]*dt;PA[i3+1]+=vel[i3+1]*dt;PA[i3+2]+=vel[i3+2]*dt;
+    VA[i]=Math.sqrt(vel[i3]*vel[i3]+vel[i3+1]*vel[i3+1]+vel[i3+2]*vel[i3+2]);
+  }
+
+  geo.attributes.position.needsUpdate=true;
+  geo.attributes.aV.needsUpdate=true;
+
+  sortF++;
+  if(sortF%C.sortInt===0)depthSort();
+
+  bMat.uniforms.uT.value=time;
+  dMat.uniforms.uT.value=time;
+  R.render(scene,cam);
+
+  fc++;ft+=dt;
+  if(ft>=1){stEl.textContent=`${actual.toLocaleString()} splats \xb7 depth-sorted \xb7 ${Math.round(fc/ft)} fps`;fc=0;ft=0}
+}
+loop();
+
+addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();
+  R.setSize(innerWidth,innerHeight);
+  const pr=R.getPixelRatio();
+  mat.uniforms.uPR.value=pr;bMat.uniforms.uPR.value=pr;dMat.uniforms.uPR.value=pr;
+});
+</script>
+</body>
+</html>
