@@ -20,12 +20,48 @@
       background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
       border: 1px solid rgba(255,255,255,0.06); white-space: nowrap;
     }
+    #lighting {
+      position: fixed; top: 12px; right: 12px; z-index: 30;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+      padding: 12px 16px; min-width: 180px;
+    }
+    #lighting h4 {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px;
+      color: #f0c040; margin-bottom: 8px; font-weight: 700;
+    }
+    #lighting .lrow {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; color: #888; padding: 2px 0;
+    }
+    #lighting .lrow .lv { color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
+    #lighting input[type=range] { width: 100%; margin: 2px 0 6px; accent-color: #f0c040; }
+    #lighting button {
+      width: 100%; padding: 5px; margin-top: 4px; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 5px; background: rgba(255,255,255,0.04); color: #fff;
+      font-size: 9px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 1px;
+    }
+    #lighting button:hover { background: rgba(255,255,255,0.1); }
   </style>
 </head>
 <body>
 
 <div id="status">VP Control Room Demo — HTML-in-Canvas Concept</div>
 <div id="instructions">Drag to orbit | Scroll to zoom | Monitors update live</div>
+
+<div id="lighting">
+  <h4>Room Lighting</h4>
+  <div class="lrow"><span>Room</span><span class="lv" id="room-val">20%</span></div>
+  <input type="range" id="room-slider" min="0" max="100" value="20">
+  <div class="lrow"><span>Key Light</span><span class="lv" id="key-val">60%</span></div>
+  <input type="range" id="key-slider" min="0" max="100" value="60">
+  <div class="lrow"><span>Monitor Glow</span><span class="lv" id="glow-val">100%</span></div>
+  <input type="range" id="glow-slider" min="0" max="100" value="100">
+  <div class="lrow"><span>Warmth</span><span class="lv" id="warmth-val">50%</span></div>
+  <input type="range" id="warmth-slider" min="0" max="100" value="50">
+  <button id="btn-lights-on">Lights On (bright)</button>
+  <button id="btn-lights-dim" style="margin-top:3px">Lights Dim (studio)</button>
+</div>
 
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
@@ -55,13 +91,24 @@ controls.target.set(0, 1.0, 0);
 controls.minDistance = 2;
 controls.maxDistance = 12;
 
-scene.add(new THREE.AmbientLight(0x334466, 0.4));
+const ambient = new THREE.AmbientLight(0x334466, 0.4);
+scene.add(ambient);
 const key = new THREE.DirectionalLight(0xddeeff, 0.6);
 key.position.set(3, 5, 2);
 scene.add(key);
 const fill = new THREE.PointLight(0x4444aa, 0.3, 10);
 fill.position.set(-3, 2, 1);
 scene.add(fill);
+// Ceiling light for "room on" mode
+const ceiling = new THREE.PointLight(0xffeedd, 0, 15);
+ceiling.position.set(0, 4, 1);
+scene.add(ceiling);
+// Desk lamp
+const deskLight = new THREE.SpotLight(0xfff0dd, 0, 6, Math.PI/4, 0.5);
+deskLight.position.set(0, 2.5, 2);
+deskLight.target.position.set(0, 0.7, 1.2);
+scene.add(deskLight);
+scene.add(deskLight.target);
 
 scene.add(new THREE.Mesh(
   new THREE.PlaneGeometry(30, 30),
@@ -200,16 +247,102 @@ function mkMonitor(w,h) {
 const pos = [{x:-2.4,y:1.5,z:0.2,ry:0.28},{x:0,y:1.5,z:-0.2,ry:0},{x:2.4,y:1.5,z:0.2,ry:-0.28}];
 const glows = [0x38bdf8,0xa78bfa,0x4ade80];
 
+const glowMeshes = [];
 pos.forEach((p,i) => {
   const frame = mkMonitor(2.1,1.4); frame.position.set(p.x,p.y,p.z); frame.rotation.y=p.ry; scene.add(frame);
   const scr = new THREE.Mesh(new THREE.PlaneGeometry(2.06,1.36), new THREE.MeshBasicMaterial({map:textures[i],toneMapped:false}));
   scr.position.set(p.x,p.y,p.z+0.035); scr.rotation.y=p.ry; scene.add(scr);
   const gl = new THREE.Mesh(new THREE.PlaneGeometry(2.6,1.8), new THREE.MeshBasicMaterial({color:glows[i],transparent:true,opacity:0.035,toneMapped:false}));
   gl.position.set(p.x,p.y,p.z-0.06); gl.rotation.y=p.ry; scene.add(gl);
+  glowMeshes.push(gl);
 });
 
 // Desk
-scene.add(new THREE.Mesh(new THREE.BoxGeometry(7,0.06,1.2), new THREE.MeshStandardMaterial({color:0x1a1a22,roughness:0.6,metalness:0.3})).translateY(0.7).translateZ(1.2));
+const desk = new THREE.Mesh(new THREE.BoxGeometry(7,0.06,1.2), new THREE.MeshStandardMaterial({color:0x1a1a22,roughness:0.6,metalness:0.3}));
+desk.translateY(0.7).translateZ(1.2);
+scene.add(desk);
+
+// Chair (so there's something to see with lights on)
+const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.05,0.5), new THREE.MeshStandardMaterial({color:0x222230,roughness:0.7}));
+chairSeat.position.set(0,0.55,2.2); scene.add(chairSeat);
+const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.5,0.05), new THREE.MeshStandardMaterial({color:0x222230,roughness:0.7}));
+chairBack.position.set(0,0.8,2.45); scene.add(chairBack);
+// Chair legs
+for (const cx of [-0.25,0.25]) for (const cz of [1.95,2.45]) {
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.55,6), new THREE.MeshStandardMaterial({color:0x333340,metalness:0.6}));
+  leg.position.set(cx,0.275,cz); scene.add(leg);
+}
+
+// Keyboard on desk
+const kb = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.015,0.18), new THREE.MeshStandardMaterial({color:0x181820,roughness:0.5}));
+kb.position.set(0,0.74,1.5); scene.add(kb);
+// Mouse
+const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.012,0.1), new THREE.MeshStandardMaterial({color:0x181820,roughness:0.5}));
+mouse.position.set(0.4,0.74,1.5); scene.add(mouse);
+// Coffee mug
+const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.09,12), new THREE.MeshStandardMaterial({color:0x664433,roughness:0.8}));
+mug.position.set(-0.5,0.78,1.4); scene.add(mug);
+
+// === LIGHTING CONTROLS ===
+function updateLighting() {
+  const room = parseInt(document.getElementById('room-slider').value) / 100;
+  const keyVal = parseInt(document.getElementById('key-slider').value) / 100;
+  const glowVal = parseInt(document.getElementById('glow-slider').value) / 100;
+  const warmth = parseInt(document.getElementById('warmth-slider').value) / 100;
+
+  document.getElementById('room-val').textContent = Math.round(room*100)+'%';
+  document.getElementById('key-val').textContent = Math.round(keyVal*100)+'%';
+  document.getElementById('glow-val').textContent = Math.round(glowVal*100)+'%';
+  document.getElementById('warmth-val').textContent = Math.round(warmth*100)+'%';
+
+  // Ambient
+  ambient.intensity = 0.1 + room * 1.5;
+  const warmColor = new THREE.Color().setHSL(0.1, 0.3, 0.5);
+  const coolColor = new THREE.Color(0x334466);
+  ambient.color.copy(coolColor).lerp(warmColor, warmth);
+
+  // Key light
+  key.intensity = keyVal * 1.5;
+
+  // Ceiling
+  ceiling.intensity = room * 2.5;
+  ceiling.color.set(warmth > 0.5 ? 0xffeedd : 0xddeeff);
+
+  // Desk lamp
+  deskLight.intensity = room * 1.5;
+
+  // Fill
+  fill.intensity = 0.1 + room * 0.5;
+
+  // Monitor glow
+  glowMeshes.forEach(g => { g.material.opacity = 0.01 + glowVal * 0.06; });
+
+  // Background
+  const bgBright = 0.02 + room * 0.08;
+  scene.background = new THREE.Color(bgBright, bgBright, bgBright + 0.01);
+  scene.fog = new THREE.FogExp2(scene.background, 0.07 - room * 0.04);
+}
+
+document.getElementById('room-slider').addEventListener('input', updateLighting);
+document.getElementById('key-slider').addEventListener('input', updateLighting);
+document.getElementById('glow-slider').addEventListener('input', updateLighting);
+document.getElementById('warmth-slider').addEventListener('input', updateLighting);
+
+document.getElementById('btn-lights-on').addEventListener('click', () => {
+  document.getElementById('room-slider').value = 80;
+  document.getElementById('key-slider').value = 90;
+  document.getElementById('glow-slider').value = 60;
+  document.getElementById('warmth-slider').value = 65;
+  updateLighting();
+});
+
+document.getElementById('btn-lights-dim').addEventListener('click', () => {
+  document.getElementById('room-slider').value = 15;
+  document.getElementById('key-slider').value = 40;
+  document.getElementById('glow-slider').value = 100;
+  document.getElementById('warmth-slider').value = 30;
+  updateLighting();
+});
 
 // Animate
 const t0 = Date.now();
