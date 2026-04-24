@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gaussian Splat Lab — VP Lab</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{overflow:hidden;background:#060610;font-family:system-ui,sans-serif;touch-action:none;color:#fff}
+    canvas{display:block}
+    #ui{position:fixed;top:12px;left:12px;z-index:10;font-size:11px}
+    .panel{background:rgba(0,0,0,0.7);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px 16px;margin-bottom:8px;min-width:200px}
+    .panel h3{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#6c9;margin-bottom:6px;font-weight:700}
+    .panel .row{display:flex;justify-content:space-between;padding:2px 0;color:#888;font-size:10px}
+    .panel .row .v{color:#fff;font-weight:600;font-variant-numeric:tabular-nums}
+    .panel button{width:100%;padding:6px;margin-top:6px;border:1px solid rgba(255,255,255,0.12);border-radius:5px;background:rgba(255,255,255,0.04);color:#fff;font-size:10px;font-weight:600;cursor:pointer}
+    .panel button:hover{background:rgba(255,255,255,0.1)}
+    .panel button.active{border-color:#6c9;color:#6c9}
+    .panel select{width:100%;padding:5px;margin-top:4px;border:1px solid rgba(255,255,255,0.12);border-radius:5px;background:rgba(0,0,0,0.5);color:#fff;font-size:10px}
+    .panel input[type=range]{width:100%;margin:4px 0;accent-color:#6c9}
+    #info{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);padding:6px 16px;border-radius:8px;font-size:10px;color:#555;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.05);white-space:nowrap}
+    #title{position:fixed;top:12px;right:12px;font-size:10px;color:#333;letter-spacing:1px;text-transform:uppercase}
+  </style>
+</head>
+<body>
+
+<div id="ui">
+  <div class="panel">
+    <h3>Gaussian Splat Lab</h3>
+    <div class="row"><span>Splats</span><span class="v" id="splat-count">0</span></div>
+    <div class="row"><span>FPS</span><span class="v" id="fps">0</span></div>
+    <div class="row"><span>Mode</span><span class="v" id="mode-label">Galaxy</span></div>
+  </div>
+  <div class="panel">
+    <h3>Scene Preset</h3>
+    <select id="preset">
+      <option value="galaxy">Galaxy (spiral arms + core)</option>
+      <option value="explosion">Explosion (burst + trails)</option>
+      <option value="dna">DNA Helix (double strand)</option>
+      <option value="terrain">Terrain (procedural landscape)</option>
+      <option value="portal">Portal (toroidal energy ring)</option>
+      <option value="rain">Rain (falling particles)</option>
+    </select>
+    <button id="btn-generate">Generate</button>
+  </div>
+  <div class="panel">
+    <h3>Controls</h3>
+    <div class="row"><span>Splat Count</span><span class="v" id="count-label">50,000</span></div>
+    <input type="range" id="count-slider" min="5000" max="200000" step="5000" value="50000">
+    <div class="row"><span>Splat Size</span><span class="v" id="size-label">1.0</span></div>
+    <input type="range" id="size-slider" min="0.1" max="5" step="0.1" value="1">
+    <div class="row"><span>Animation Speed</span><span class="v" id="speed-label">1.0</span></div>
+    <input type="range" id="speed-slider" min="0" max="3" step="0.1" value="1">
+    <button id="btn-animate" class="active">Animation: ON</button>
+  </div>
+</div>
+
+<div id="info">Drag to orbit | Scroll to zoom | Code-generated gaussian splats, no cameras needed</div>
+<div id="title">CAMRAD VP Lab</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060610);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 500);
+camera.position.set(0, 2, 6);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+
+// State
+let splatCount = 50000;
+let splatSize = 1.0;
+let animSpeed = 1.0;
+let animating = true;
+let currentPreset = 'galaxy';
+let splatMesh = null;
+
+// ============================================
+// PROCEDURAL GAUSSIAN SPLAT GENERATORS
+// Each returns { positions, colors, sizes }
+// ============================================
+
+function generateGalaxy(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const arm = Math.floor(Math.random() * 4);
+    const dist = Math.pow(Math.random(), 0.5) * 8;
+    const angle = (arm / 4) * Math.PI * 2 + dist * 0.6 + (Math.random() - 0.5) * 0.4;
+    const spread = (1 - dist / 8) * 0.3 + 0.05;
+
+    pos[i*3]   = Math.cos(angle) * dist + (Math.random()-0.5) * spread * dist * 0.3;
+    pos[i*3+1] = (Math.random()-0.5) * spread * 1.5 * Math.exp(-dist * 0.3);
+    pos[i*3+2] = Math.sin(angle) * dist + (Math.random()-0.5) * spread * dist * 0.3;
+
+    const core = Math.exp(-dist * 0.5);
+    col[i*3]   = 0.3 + core * 0.7 + Math.random() * 0.1;
+    col[i*3+1] = 0.15 + core * 0.5 + dist * 0.03;
+    col[i*3+2] = 0.4 + (1-core) * 0.6;
+
+    sizes[i] = (0.02 + core * 0.08 + Math.random() * 0.02) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+function generateExplosion(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const phi = Math.random() * Math.PI * 2;
+    const theta = Math.acos(2 * Math.random() - 1);
+    const isTrail = Math.random() < 0.3;
+    const r = isTrail ? Math.pow(Math.random(), 0.3) * 6 : Math.pow(Math.random(), 2) * 3;
+
+    pos[i*3]   = r * Math.sin(theta) * Math.cos(phi);
+    pos[i*3+1] = r * Math.sin(theta) * Math.sin(phi);
+    pos[i*3+2] = r * Math.cos(theta);
+
+    const heat = Math.exp(-r * 0.4);
+    col[i*3]   = 1.0;
+    col[i*3+1] = heat * 0.8 + (1-heat) * 0.2;
+    col[i*3+2] = heat * 0.3;
+
+    sizes[i] = (0.01 + heat * 0.06 + Math.random() * 0.01) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+function generateDNA(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const t = (i / count) * Math.PI * 8 - Math.PI * 4;
+    const strand = i % 3; // 0=strand1, 1=strand2, 2=bridge
+    const r = 1.2;
+    const noise = (Math.random() - 0.5) * 0.08;
+
+    if (strand === 0) {
+      pos[i*3]   = Math.cos(t) * r + noise;
+      pos[i*3+1] = t * 0.4;
+      pos[i*3+2] = Math.sin(t) * r + noise;
+      col[i*3] = 0.2; col[i*3+1] = 0.6; col[i*3+2] = 1.0;
+    } else if (strand === 1) {
+      pos[i*3]   = Math.cos(t + Math.PI) * r + noise;
+      pos[i*3+1] = t * 0.4;
+      pos[i*3+2] = Math.sin(t + Math.PI) * r + noise;
+      col[i*3] = 1.0; col[i*3+1] = 0.3; col[i*3+2] = 0.5;
+    } else {
+      const bridgeT = Math.random();
+      const a1 = t, a2 = t + Math.PI;
+      pos[i*3]   = THREE.MathUtils.lerp(Math.cos(a1)*r, Math.cos(a2)*r, bridgeT) + noise;
+      pos[i*3+1] = t * 0.4;
+      pos[i*3+2] = THREE.MathUtils.lerp(Math.sin(a1)*r, Math.sin(a2)*r, bridgeT) + noise;
+      col[i*3] = 0.8; col[i*3+1] = 0.8; col[i*3+2] = 0.3;
+    }
+
+    sizes[i] = (0.03 + Math.random() * 0.02) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+function generateTerrain(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  // Simple noise-like terrain
+  function noise2D(x, z) {
+    return Math.sin(x * 0.8) * Math.cos(z * 0.6) * 0.5
+         + Math.sin(x * 2.1 + 1.3) * Math.cos(z * 1.7 + 0.8) * 0.25
+         + Math.sin(x * 4.3 + 2.7) * Math.cos(z * 3.9 + 1.5) * 0.125;
+  }
+
+  for (let i = 0; i < count; i++) {
+    const x = (Math.random() - 0.5) * 16;
+    const z = (Math.random() - 0.5) * 16;
+    const y = noise2D(x, z) * 2;
+
+    pos[i*3] = x;
+    pos[i*3+1] = y;
+    pos[i*3+2] = z;
+
+    // Color by height
+    const h = (y + 2) / 4;
+    if (h < 0.3) { // water
+      col[i*3] = 0.1; col[i*3+1] = 0.3; col[i*3+2] = 0.6;
+    } else if (h < 0.5) { // grass
+      col[i*3] = 0.2; col[i*3+1] = 0.5 + Math.random()*0.1; col[i*3+2] = 0.15;
+    } else if (h < 0.7) { // rock
+      col[i*3] = 0.4; col[i*3+1] = 0.35; col[i*3+2] = 0.3;
+    } else { // snow
+      col[i*3] = 0.9; col[i*3+1] = 0.92; col[i*3+2] = 0.95;
+    }
+
+    sizes[i] = (0.04 + Math.random() * 0.03) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+function generatePortal(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    const t = Math.random() * Math.PI * 2;
+    const isRing = Math.random() < 0.7;
+
+    if (isRing) {
+      const R = 2.5 + (Math.random()-0.5) * 0.4;
+      const r = 0.3 + Math.random() * 0.3;
+      const u = t;
+      const v = Math.random() * Math.PI * 2;
+
+      pos[i*3]   = (R + r * Math.cos(v)) * Math.cos(u);
+      pos[i*3+1] = (R + r * Math.cos(v)) * Math.sin(u);
+      pos[i*3+2] = r * Math.sin(v);
+
+      const energy = 0.5 + Math.sin(u * 3) * 0.5;
+      col[i*3] = 0.3 + energy * 0.5;
+      col[i*3+1] = 0.1 + energy * 0.8;
+      col[i*3+2] = 0.8 + energy * 0.2;
+    } else {
+      // Energy particles in center
+      const dist = Math.pow(Math.random(), 2) * 2;
+      const a = Math.random() * Math.PI * 2;
+      pos[i*3]   = Math.cos(a) * dist * 0.5;
+      pos[i*3+1] = Math.sin(a) * dist * 0.5;
+      pos[i*3+2] = (Math.random()-0.5) * 0.5;
+
+      col[i*3] = 0.8; col[i*3+1] = 0.9; col[i*3+2] = 1.0;
+    }
+
+    sizes[i] = (0.02 + Math.random() * 0.04) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+function generateRain(count) {
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    pos[i*3]   = (Math.random()-0.5) * 10;
+    pos[i*3+1] = Math.random() * 8 - 1;
+    pos[i*3+2] = (Math.random()-0.5) * 10;
+
+    const brightness = 0.4 + Math.random() * 0.3;
+    col[i*3] = brightness * 0.7;
+    col[i*3+1] = brightness * 0.8;
+    col[i*3+2] = brightness;
+
+    sizes[i] = (0.005 + Math.random() * 0.015) * splatSize;
+  }
+  return { positions: pos, colors: col, sizes };
+}
+
+const generators = { galaxy: generateGalaxy, explosion: generateExplosion, dna: generateDNA, terrain: generateTerrain, portal: generatePortal, rain: generateRain };
+
+// ============================================
+// RENDER SPLATS AS POINTS (WebGL compatible everywhere)
+// Real gaussian splatting renderers use custom shaders
+// for the ellipsoidal splat shape — this uses point sprites
+// as a cross-platform approximation that still looks great
+// ============================================
+
+function buildSplatMesh(data) {
+  if (splatMesh) { scene.remove(splatMesh); splatMesh.geometry.dispose(); splatMesh.material.dispose(); }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(data.colors, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(data.sizes, 1));
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: `
+      attribute float size;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        vColor = color;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        float dist = -mvPos.z;
+        gl_PointSize = size * 800.0 / dist;
+        gl_Position = projectionMatrix * mvPos;
+        // Fade with distance for depth
+        vAlpha = smoothstep(100.0, 1.0, dist) * 0.85;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        // Gaussian falloff from center of point sprite
+        float d = length(gl_PointCoord - 0.5) * 2.0;
+        float gauss = exp(-d * d * 3.0);
+        if (gauss < 0.01) discard;
+        gl_FragColor = vec4(vColor, gauss * vAlpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+  });
+
+  splatMesh = new THREE.Points(geo, mat);
+  scene.add(splatMesh);
+  document.getElementById('splat-count').textContent = (data.positions.length / 3).toLocaleString();
+}
+
+// Initial generation
+buildSplatMesh(generators[currentPreset](splatCount));
+
+// ============================================
+// ALSO ADD A TRADITIONAL THREE.JS MESH
+// to demonstrate hybrid splat + mesh compositing
+// ============================================
+
+// Reflective sphere (traditional 3D asset in the splat scene)
+const sphereGeo = new THREE.SphereGeometry(0.4, 32, 32);
+const sphereMat = new THREE.MeshStandardMaterial({ color: 0x888899, metalness: 0.9, roughness: 0.1 });
+const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+sphere.position.set(0, 0, 0);
+scene.add(sphere);
+
+// Wireframe cube (another mesh asset)
+const cubeGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+const cubeMat = new THREE.MeshBasicMaterial({ color: 0x6c9, wireframe: true, transparent: true, opacity: 0.3 });
+const cube = new THREE.Mesh(cubeGeo, cubeMat);
+scene.add(cube);
+
+// Lighting for the mesh objects
+scene.add(new THREE.AmbientLight(0x334466, 0.5));
+const light = new THREE.PointLight(0xffffff, 1, 20);
+light.position.set(3, 3, 3);
+scene.add(light);
+
+// ============================================
+// UI
+// ============================================
+
+document.getElementById('preset').addEventListener('change', e => {
+  currentPreset = e.target.value;
+  document.getElementById('mode-label').textContent = e.target.options[e.target.selectedIndex].text.split(' (')[0];
+});
+
+document.getElementById('btn-generate').addEventListener('click', () => {
+  buildSplatMesh(generators[currentPreset](splatCount));
+});
+
+document.getElementById('count-slider').addEventListener('input', e => {
+  splatCount = parseInt(e.target.value);
+  document.getElementById('count-label').textContent = splatCount.toLocaleString();
+});
+
+document.getElementById('size-slider').addEventListener('input', e => {
+  splatSize = parseFloat(e.target.value);
+  document.getElementById('size-label').textContent = splatSize.toFixed(1);
+});
+
+document.getElementById('speed-slider').addEventListener('input', e => {
+  animSpeed = parseFloat(e.target.value);
+  document.getElementById('speed-label').textContent = animSpeed.toFixed(1);
+});
+
+document.getElementById('btn-animate').addEventListener('click', e => {
+  animating = !animating;
+  e.target.textContent = `Animation: ${animating ? 'ON' : 'OFF'}`;
+  e.target.classList.toggle('active', animating);
+});
+
+// ============================================
+// ANIMATION LOOP
+// ============================================
+
+let lastTime = performance.now();
+let frameCount = 0;
+let fpsDisplay = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  const now = performance.now();
+  frameCount++;
+  if (now - lastTime > 500) {
+    fpsDisplay = Math.round(frameCount / ((now - lastTime) / 1000));
+    document.getElementById('fps').textContent = fpsDisplay;
+    frameCount = 0;
+    lastTime = now;
+  }
+
+  if (animating && splatMesh) {
+    const t = now * 0.001 * animSpeed;
+
+    // Rotate the splat cloud
+    if (currentPreset === 'galaxy') {
+      splatMesh.rotation.y = t * 0.1;
+    } else if (currentPreset === 'explosion') {
+      // Pulse scale
+      const pulse = 1 + Math.sin(t * 2) * 0.05;
+      splatMesh.scale.setScalar(pulse);
+      splatMesh.rotation.y = t * 0.15;
+    } else if (currentPreset === 'dna') {
+      splatMesh.rotation.y = t * 0.3;
+    } else if (currentPreset === 'terrain') {
+      splatMesh.rotation.y = t * 0.05;
+    } else if (currentPreset === 'portal') {
+      splatMesh.rotation.z = t * 0.2;
+      splatMesh.rotation.x = Math.sin(t * 0.5) * 0.1;
+    } else if (currentPreset === 'rain') {
+      // Move positions down, wrap around
+      const positions = splatMesh.geometry.attributes.position.array;
+      for (let i = 1; i < positions.length; i += 3) {
+        positions[i] -= 0.05 * animSpeed;
+        if (positions[i] < -1) positions[i] += 9;
+      }
+      splatMesh.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Animate the hybrid mesh objects
+    sphere.position.y = Math.sin(t * 0.8) * 0.3;
+    cube.rotation.x = t * 0.2;
+    cube.rotation.y = t * 0.3;
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
